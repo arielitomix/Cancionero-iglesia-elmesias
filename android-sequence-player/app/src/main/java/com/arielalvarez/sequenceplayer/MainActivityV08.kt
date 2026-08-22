@@ -80,6 +80,7 @@ class MainActivityV08 : Activity() {
     @Volatile private var loopEnabled = false
     @Volatile private var currentFrame = 0
     @Volatile private var generation = 0
+    @Volatile private var songLoadGeneration = 0
 
     private var sampleRate = 48000
     private var totalFrames = 0
@@ -326,11 +327,14 @@ class MainActivityV08 : Activity() {
         try { contentResolver.takePersistableUriPermission(uri,data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch(_:SecurityException) {}
         val name=getDisplayName(uri) ?: "Archivo WAV"
         if(!name.lowercase().endsWith(".wav")) { Toast.makeText(this,"Solo WAV",Toast.LENGTH_LONG).show(); return }
+        val pickerGeneration=++songLoadGeneration
+        loadingSavedSong=false
         statusView.text="Cargando $name…"
         Thread {
             try {
                 val stem=loadPcm16Wav(uri,name)
                 runOnUiThread {
+                    if(pickerGeneration!=songLoadGeneration) return@runOnUiThread
                     when(requestCode){
                         PICK_CLICK->{clickUri=uri;clickStem=stem;clickNameView.text="Click: $name"}
                         PICK_DRUMS->{drumsUri=uri;drumsStem=stem;drumsNameView.text="Drums: $name"}
@@ -339,12 +343,16 @@ class MainActivityV08 : Activity() {
                     validateLoadedStems()
                 }
             } catch(e:Exception) {
-                runOnUiThread { statusView.text="No se pudo cargar: ${e.message ?: "WAV incompatible"}" }
+                runOnUiThread {
+                    if(pickerGeneration==songLoadGeneration) statusView.text="No se pudo cargar: ${e.message ?: "WAV incompatible"}"
+                }
             }
         }.start()
     }
 
     private fun newSong() {
+        ++songLoadGeneration
+        loadingSavedSong=false
         stopPlayback()
         selectedSongIndex=-1
         titleInput.setText("")
@@ -363,6 +371,7 @@ class MainActivityV08 : Activity() {
     private fun saveCurrentSong() {
         val title=titleInput.text.toString().trim()
         if(title.isEmpty()) { Toast.makeText(this,"Ponle nombre a la canción",Toast.LENGTH_SHORT).show(); return }
+        if(!allLoaded()) { Toast.makeText(this,"Carga 3 WAV compatibles antes de guardar",Toast.LENGTH_SHORT).show(); return }
         val c=clickUri?.toString(); val d=drumsUri?.toString(); val b=bassUri?.toString()
         if(c==null || d==null || b==null) { Toast.makeText(this,"Carga Click, Drums y Bass",Toast.LENGTH_SHORT).show(); return }
         val preset=SongPreset(title,c,d,b,clickVolume,drumsVolume,bassVolume,clickMuted,drumsMuted,bassMuted,clickSolo,drumsSolo,bassSolo)
@@ -385,7 +394,8 @@ class MainActivityV08 : Activity() {
     }
 
     private fun loadSong(index:Int) {
-        if(index !in songs.indices || loadingSavedSong) return
+        if(index !in songs.indices) return
+        val loadGeneration=++songLoadGeneration
         stopPlayback()
         selectedSongIndex=index
         songSpinner.setSelection(index)
@@ -404,6 +414,7 @@ class MainActivityV08 : Activity() {
                 val d=loadPcm16Wav(du,getDisplayName(du) ?: "Drums")
                 val b=loadPcm16Wav(bu,getDisplayName(bu) ?: "Bass")
                 runOnUiThread {
+                    if(loadGeneration!=songLoadGeneration) return@runOnUiThread
                     clickUri=cu; drumsUri=du; bassUri=bu
                     clickStem=c; drumsStem=d; bassStem=b
                     clickNameView.text="Click: ${c.name}"; drumsNameView.text="Drums: ${d.name}"; bassNameView.text="Bass: ${b.name}"
@@ -413,7 +424,12 @@ class MainActivityV08 : Activity() {
                     getSharedPreferences(PREFS,MODE_PRIVATE).edit().putInt(LAST_SONG_KEY,index).apply()
                 }
             } catch(e:Exception) {
-                runOnUiThread { loadingSavedSong=false; statusView.text="No se pudo abrir ${s.title}: ${e.message ?: "archivo no disponible"}" }
+                runOnUiThread {
+                    if(loadGeneration==songLoadGeneration) {
+                        loadingSavedSong=false
+                        statusView.text="No se pudo abrir ${s.title}: ${e.message ?: "archivo no disponible"}"
+                    }
+                }
             }
         }.start()
     }
@@ -569,5 +585,5 @@ class MainActivityV08 : Activity() {
     private fun getDisplayName(uri:Uri):String?{contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use{c->val i=c.getColumnIndex(OpenableColumns.DISPLAY_NAME);if(i>=0&&c.moveToFirst())return c.getString(i)};return uri.lastPathSegment}
     private fun formatTime(ms:Int):String{val sec=(ms/1000).coerceAtLeast(0);return "%d:%02d".format(sec/60,sec%60)}
 
-    override fun onDestroy(){playing=false;generation++;handler.removeCallbacks(progressUpdater);releaseTrack();super.onDestroy()}
+    override fun onDestroy(){playing=false;generation++;songLoadGeneration++;handler.removeCallbacks(progressUpdater);releaseTrack();super.onDestroy()}
 }
