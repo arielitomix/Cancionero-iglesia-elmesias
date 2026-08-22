@@ -30,553 +30,75 @@ import java.io.InputStream
 import kotlin.math.roundToInt
 
 class MainActivityV08 : Activity() {
-
     companion object {
-        private const val PICK_CLICK = 1001
-        private const val PICK_DRUMS = 1002
-        private const val PICK_BASS = 1003
-        private const val PREFS = "sequence_player_v08"
-        private const val SONGS_KEY = "songs_json"
-        private const val LAST_SONG_KEY = "last_song"
+        private const val PICK_CLICK=1001; private const val PICK_DRUMS=1002; private const val PICK_BASS=1003
+        private const val PREFS="sequence_player_v08"; private const val SONGS_KEY="songs_json"; private const val LAST_SONG_KEY="last_song"
     }
-
-    private data class LoadedStem(val name: String, val sampleRate: Int, val samples: ShortArray)
-
-    private data class SongPreset(
-        var title: String,
-        var clickUri: String,
-        var drumsUri: String,
-        var bassUri: String,
-        var clickVolume: Int,
-        var drumsVolume: Int,
-        var bassVolume: Int,
-        var clickMuted: Boolean,
-        var drumsMuted: Boolean,
-        var bassMuted: Boolean,
-        var clickSolo: Boolean,
-        var drumsSolo: Boolean,
-        var bassSolo: Boolean
-    )
-
-    private var clickStem: LoadedStem? = null
-    private var drumsStem: LoadedStem? = null
-    private var bassStem: LoadedStem? = null
-
-    private var clickUri: Uri? = null
-    private var drumsUri: Uri? = null
-    private var bassUri: Uri? = null
-
-    @Volatile private var clickVolume = 100
-    @Volatile private var drumsVolume = 100
-    @Volatile private var bassVolume = 100
-    @Volatile private var clickMuted = false
-    @Volatile private var drumsMuted = false
-    @Volatile private var bassMuted = false
-    @Volatile private var clickSolo = false
-    @Volatile private var drumsSolo = false
-    @Volatile private var bassSolo = false
-
-    @Volatile private var playing = false
-    @Volatile private var loopEnabled = false
-    @Volatile private var currentFrame = 0
-    @Volatile private var generation = 0
-    @Volatile private var songLoadGeneration = 0
-
-    private var sampleRate = 48000
-    private var totalFrames = 0
-    private var audioTrack: AudioTrack? = null
-    private val handler = Handler(Looper.getMainLooper())
-
-    private val songs = mutableListOf<SongPreset>()
-    private var selectedSongIndex = -1
-    private var loadingSavedSong = false
-
-    private lateinit var songSpinner: Spinner
-    private lateinit var titleInput: EditText
-    private lateinit var clickNameView: TextView
-    private lateinit var drumsNameView: TextView
-    private lateinit var bassNameView: TextView
-    private lateinit var currentTimeView: TextView
-    private lateinit var durationView: TextView
-    private lateinit var seekBar: SeekBar
-    private lateinit var playButton: Button
-    private lateinit var stopButton: Button
-    private lateinit var loopButton: Button
-    private lateinit var statusView: TextView
-    private lateinit var clickMuteButton: Button
-    private lateinit var drumsMuteButton: Button
-    private lateinit var bassMuteButton: Button
-    private lateinit var clickSoloButton: Button
-    private lateinit var drumsSoloButton: Button
-    private lateinit var bassSoloButton: Button
-    private lateinit var clickSlider: SeekBar
-    private lateinit var drumsSlider: SeekBar
-    private lateinit var bassSlider: SeekBar
-    private lateinit var clickValue: TextView
-    private lateinit var drumsValue: TextView
-    private lateinit var bassValue: TextView
-
-    private val progressUpdater = object : Runnable {
-        override fun run() {
-            val ms = if (sampleRate > 0) ((currentFrame.toLong() * 1000L) / sampleRate).toInt() else 0
-            currentTimeView.text = formatTime(ms)
-            if (!seekBar.isPressed) seekBar.progress = ms.coerceAtMost(seekBar.max)
-            handler.postDelayed(this, 100)
-        }
+    private data class LoadedStem(val name:String,val sampleRate:Int,val samples:ShortArray)
+    private data class SongPreset(var title:String,var clickUri:String,var drumsUri:String,var bassUri:String,var clickVolume:Int,var drumsVolume:Int,var bassVolume:Int,var clickMuted:Boolean,var drumsMuted:Boolean,var bassMuted:Boolean,var clickSolo:Boolean,var drumsSolo:Boolean,var bassSolo:Boolean)
+    private var clickStem:LoadedStem?=null; private var drumsStem:LoadedStem?=null; private var bassStem:LoadedStem?=null
+    private var clickUri:Uri?=null; private var drumsUri:Uri?=null; private var bassUri:Uri?=null
+    @Volatile private var clickVolume=100; @Volatile private var drumsVolume=100; @Volatile private var bassVolume=100
+    @Volatile private var clickMuted=false; @Volatile private var drumsMuted=false; @Volatile private var bassMuted=false
+    @Volatile private var clickSolo=false; @Volatile private var drumsSolo=false; @Volatile private var bassSolo=false
+    @Volatile private var playing=false; @Volatile private var loopEnabled=false; @Volatile private var currentFrame=0; @Volatile private var generation=0; @Volatile private var songLoadGeneration=0
+    private var sampleRate=48000; private var totalFrames=0; private var audioTrack:AudioTrack?=null
+    private val handler=Handler(Looper.getMainLooper()); private val songs=mutableListOf<SongPreset>(); private var selectedSongIndex=-1; private var loadingSavedSong=false
+    private lateinit var songSpinner:Spinner; private lateinit var titleInput:EditText; private lateinit var clickNameView:TextView; private lateinit var drumsNameView:TextView; private lateinit var bassNameView:TextView
+    private lateinit var currentTimeView:TextView; private lateinit var durationView:TextView; private lateinit var seekBar:SeekBar; private lateinit var playButton:Button; private lateinit var stopButton:Button; private lateinit var loopButton:Button; private lateinit var statusView:TextView
+    private lateinit var clickMuteButton:Button; private lateinit var drumsMuteButton:Button; private lateinit var bassMuteButton:Button; private lateinit var clickSoloButton:Button; private lateinit var drumsSoloButton:Button; private lateinit var bassSoloButton:Button
+    private lateinit var clickSlider:SeekBar; private lateinit var drumsSlider:SeekBar; private lateinit var bassSlider:SeekBar; private lateinit var clickValue:TextView; private lateinit var drumsValue:TextView; private lateinit var bassValue:TextView
+    private val progressUpdater=object:Runnable{override fun run(){val ms=if(sampleRate>0)((currentFrame.toLong()*1000L)/sampleRate).toInt() else 0;currentTimeView.text=formatTime(ms);if(!seekBar.isPressed)seekBar.progress=ms.coerceAtMost(seekBar.max);handler.postDelayed(this,100)}}
+    override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setVolumeControlStream(AudioManager.STREAM_MUSIC);loadSongLibrary();setContentView(buildUi());handler.post(progressUpdater);refreshSongSpinner();restoreLastSong()}
+    private fun buildUi():LinearLayout{
+        val density=resources.displayMetrics.density; fun dp(v:Int)=(v*density).toInt()
+        val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(14),dp(14),dp(14));setBackgroundColor(Color.rgb(10,14,20));layoutParams=ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)}
+        root.addView(TextView(this).apply{text="SEQUENCE PLAYER · 0.8";setTextColor(Color.rgb(145,160,178));textSize=12f});root.addView(TextView(this).apply{text="Canciones + setlist";setTextColor(Color.WHITE);textSize=26f})
+        val libraryRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(8),0,dp(8))};songSpinner=Spinner(this);libraryRow.addView(songSpinner,LinearLayout.LayoutParams(0,dp(48),1f));libraryRow.addView(Button(this).apply{text="ABRIR";setOnClickListener{val pos=songSpinner.selectedItemPosition;if(pos in songs.indices)loadSong(pos)}},LinearLayout.LayoutParams(dp(90),dp(48)).apply{marginStart=dp(6)});root.addView(libraryRow)
+        val titleRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL};titleInput=EditText(this).apply{hint="Nombre de la canción";setTextColor(Color.WHITE);setHintTextColor(Color.rgb(130,140,150));setSingleLine(true)};titleRow.addView(titleInput,LinearLayout.LayoutParams(0,dp(48),1f));titleRow.addView(Button(this).apply{text="NUEVA";setOnClickListener{newSong()}},LinearLayout.LayoutParams(dp(90),dp(48)).apply{marginStart=dp(6)});root.addView(titleRow)
+        root.addView(Button(this).apply{text="GUARDAR / ACTUALIZAR CANCIÓN";setOnClickListener{saveCurrentSong()}},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(46)).apply{topMargin=dp(6)})
+        root.addView(Button(this).apply{text="+ CLICK WAV";setOnClickListener{openPicker(PICK_CLICK)}},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(40)).apply{topMargin=dp(8)});clickNameView=fileLabel("Click: ninguno",::dp);root.addView(clickNameView);root.addView(stemControls("CLICK",::dp,{clickVolume},{clickVolume=it},{clickMuted=!clickMuted;updateStemButtons()},{clickSolo=!clickSolo;updateStemButtons()}){m,s,slider,value->clickMuteButton=m;clickSoloButton=s;clickSlider=slider;clickValue=value})
+        root.addView(Button(this).apply{text="+ DRUMS WAV";setOnClickListener{openPicker(PICK_DRUMS)}},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(40)));drumsNameView=fileLabel("Drums: ninguno",::dp);root.addView(drumsNameView);root.addView(stemControls("DRUMS",::dp,{drumsVolume},{drumsVolume=it},{drumsMuted=!drumsMuted;updateStemButtons()},{drumsSolo=!drumsSolo;updateStemButtons()}){m,s,slider,value->drumsMuteButton=m;drumsSoloButton=s;drumsSlider=slider;drumsValue=value})
+        root.addView(Button(this).apply{text="+ BASS WAV";setOnClickListener{openPicker(PICK_BASS)}},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(40)));bassNameView=fileLabel("Bass: ninguno",::dp);root.addView(bassNameView);root.addView(stemControls("BASS",::dp,{bassVolume},{bassVolume=it},{bassMuted=!bassMuted;updateStemButtons()},{bassSolo=!bassSolo;updateStemButtons()}){m,s,slider,value->bassMuteButton=m;bassSoloButton=s;bassSlider=slider;bassValue=value})
+        val timeRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL};currentTimeView=TextView(this).apply{text="0:00";setTextColor(Color.WHITE);textSize=32f};durationView=TextView(this).apply{text="0:00";setTextColor(Color.rgb(145,160,178));textSize=17f;gravity=Gravity.END};timeRow.addView(currentTimeView,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));timeRow.addView(durationView,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));root.addView(timeRow)
+        seekBar=SeekBar(this).apply{max=1;setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{override fun onProgressChanged(s:SeekBar?,p:Int,fromUser:Boolean){if(fromUser)currentTimeView.text=formatTime(p)};override fun onStartTrackingTouch(s:SeekBar?)=Unit;override fun onStopTrackingTouch(s:SeekBar?){seekToMs(s?.progress?:0)}})};root.addView(seekBar,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(36)))
+        val transport=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER};stopButton=Button(this).apply{text="■ STOP";setOnClickListener{stopPlayback()}};playButton=Button(this).apply{text="▶ PLAY";setOnClickListener{if(playing)pausePlayback() else startPlayback()}};loopButton=Button(this).apply{text="↻ LOOP";setOnClickListener{loopEnabled=!loopEnabled;text=if(loopEnabled)"↻ LOOP ✓" else "↻ LOOP"}};transport.addView(stopButton,LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(4)});transport.addView(playButton,LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(4)});transport.addView(loopButton,LinearLayout.LayoutParams(0,dp(48),1f));root.addView(transport)
+        val nav=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER};nav.addView(Button(this).apply{text="← ANTERIOR";setOnClickListener{previousSong()}},LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(4);topMargin=dp(6)});nav.addView(Button(this).apply{text="SIGUIENTE →";setOnClickListener{nextSong()}},LinearLayout.LayoutParams(0,dp(44),1f).apply{topMargin=dp(6)});root.addView(nav)
+        statusView=TextView(this).apply{text="Crea o abre una canción.";setTextColor(Color.rgb(145,160,178));textSize=12f;setPadding(0,dp(8),0,0)};root.addView(statusView);updateStemButtons();updateControls();return root
     }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setVolumeControlStream(AudioManager.STREAM_MUSIC)
-        loadSongLibrary()
-        setContentView(buildUi())
-        handler.post(progressUpdater)
-        refreshSongSpinner()
-        restoreLastSong()
-    }
-
-    private fun buildUi(): LinearLayout {
-        val density = resources.displayMetrics.density
-        fun dp(v: Int) = (v * density).toInt()
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            setBackgroundColor(Color.rgb(10, 14, 20))
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        }
-
-        root.addView(TextView(this).apply {
-            text = "SEQUENCE PLAYER · 0.8"
-            setTextColor(Color.rgb(145, 160, 178))
-            textSize = 12f
-        })
-        root.addView(TextView(this).apply {
-            text = "Canciones + setlist"
-            setTextColor(Color.WHITE)
-            textSize = 26f
-        })
-
-        val libraryRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(8), 0, dp(8))
-        }
-        songSpinner = Spinner(this)
-        libraryRow.addView(songSpinner, LinearLayout.LayoutParams(0, dp(48), 1f))
-        libraryRow.addView(Button(this).apply {
-            text = "ABRIR"
-            setOnClickListener {
-                val pos = songSpinner.selectedItemPosition
-                if (pos in songs.indices) loadSong(pos)
-            }
-        }, LinearLayout.LayoutParams(dp(90), dp(48)).apply { marginStart = dp(6) })
-        root.addView(libraryRow)
-
-        val titleRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        titleInput = EditText(this).apply {
-            hint = "Nombre de la canción"
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.rgb(130, 140, 150))
-            setSingleLine(true)
-        }
-        titleRow.addView(titleInput, LinearLayout.LayoutParams(0, dp(48), 1f))
-        titleRow.addView(Button(this).apply {
-            text = "NUEVA"
-            setOnClickListener { newSong() }
-        }, LinearLayout.LayoutParams(dp(90), dp(48)).apply { marginStart = dp(6) })
-        root.addView(titleRow)
-
-        root.addView(Button(this).apply {
-            text = "GUARDAR / ACTUALIZAR CANCIÓN"
-            setOnClickListener { saveCurrentSong() }
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(6) })
-
-        root.addView(Button(this).apply { text = "+ CLICK WAV"; setOnClickListener { openPicker(PICK_CLICK) } },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)).apply { topMargin = dp(8) })
-        clickNameView = fileLabel("Click: ninguno", ::dp); root.addView(clickNameView)
-        root.addView(stemControls("CLICK", ::dp,
-            volume = { clickVolume }, setVolume = { clickVolume = it },
-            toggleMute = { clickMuted = !clickMuted; updateStemButtons() },
-            toggleSolo = { clickSolo = !clickSolo; updateStemButtons() },
-            assign = { m,s,slider,value -> clickMuteButton=m; clickSoloButton=s; clickSlider=slider; clickValue=value }))
-
-        root.addView(Button(this).apply { text = "+ DRUMS WAV"; setOnClickListener { openPicker(PICK_DRUMS) } },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)))
-        drumsNameView = fileLabel("Drums: ninguno", ::dp); root.addView(drumsNameView)
-        root.addView(stemControls("DRUMS", ::dp,
-            volume = { drumsVolume }, setVolume = { drumsVolume = it },
-            toggleMute = { drumsMuted = !drumsMuted; updateStemButtons() },
-            toggleSolo = { drumsSolo = !drumsSolo; updateStemButtons() },
-            assign = { m,s,slider,value -> drumsMuteButton=m; drumsSoloButton=s; drumsSlider=slider; drumsValue=value }))
-
-        root.addView(Button(this).apply { text = "+ BASS WAV"; setOnClickListener { openPicker(PICK_BASS) } },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)))
-        bassNameView = fileLabel("Bass: ninguno", ::dp); root.addView(bassNameView)
-        root.addView(stemControls("BASS", ::dp,
-            volume = { bassVolume }, setVolume = { bassVolume = it },
-            toggleMute = { bassMuted = !bassMuted; updateStemButtons() },
-            toggleSolo = { bassSolo = !bassSolo; updateStemButtons() },
-            assign = { m,s,slider,value -> bassMuteButton=m; bassSoloButton=s; bassSlider=slider; bassValue=value }))
-
-        val timeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        currentTimeView = TextView(this).apply { text="0:00"; setTextColor(Color.WHITE); textSize=32f }
-        durationView = TextView(this).apply { text="0:00"; setTextColor(Color.rgb(145,160,178)); textSize=17f; gravity=Gravity.END }
-        timeRow.addView(currentTimeView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        timeRow.addView(durationView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(timeRow)
-
-        seekBar = SeekBar(this).apply {
-            max = 1
-            setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) { if(fromUser) currentTimeView.text=formatTime(p) }
-                override fun onStartTrackingTouch(s: SeekBar?) = Unit
-                override fun onStopTrackingTouch(s: SeekBar?) { seekToMs(s?.progress ?: 0) }
-            })
-        }
-        root.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
-
-        val transport = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
-        stopButton = Button(this).apply { text="■ STOP"; setOnClickListener { stopPlayback() } }
-        playButton = Button(this).apply { text="▶ PLAY"; setOnClickListener { if(playing) pausePlayback() else startPlayback() } }
-        loopButton = Button(this).apply {
-            text="↻ LOOP"; setOnClickListener { loopEnabled=!loopEnabled; text=if(loopEnabled) "↻ LOOP ✓" else "↻ LOOP" }
-        }
-        transport.addView(stopButton, LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(4)})
-        transport.addView(playButton, LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(4)})
-        transport.addView(loopButton, LinearLayout.LayoutParams(0,dp(48),1f))
-        root.addView(transport)
-
-        val nav = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
-        nav.addView(Button(this).apply { text="← ANTERIOR"; setOnClickListener { previousSong() } }, LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(4); topMargin=dp(6)})
-        nav.addView(Button(this).apply { text="SIGUIENTE →"; setOnClickListener { nextSong() } }, LinearLayout.LayoutParams(0,dp(44),1f).apply{topMargin=dp(6)})
-        root.addView(nav)
-
-        statusView = TextView(this).apply {
-            text="Crea o abre una canción."; setTextColor(Color.rgb(145,160,178)); textSize=12f; setPadding(0,dp(8),0,0)
-        }
-        root.addView(statusView)
-
-        updateStemButtons()
-        updateControls()
-        return root
-    }
-
-    private fun fileLabel(t:String, dp:(Int)->Int)=TextView(this).apply{
-        text=t; setTextColor(Color.rgb(190,199,210)); textSize=12f; setPadding(0,dp(2),0,dp(2))
-    }
-
-    private fun stemControls(
-        label:String,
-        dp:(Int)->Int,
-        volume:()->Int,
-        setVolume:(Int)->Unit,
-        toggleMute:()->Unit,
-        toggleSolo:()->Unit,
-        assign:(Button,Button,SeekBar,TextView)->Unit
-    ):LinearLayout {
-        val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL}
-        val value=TextView(this).apply{text="$label ${volume()}%"; setTextColor(Color.LTGRAY); textSize=11f}
-        val slider=SeekBar(this).apply{
-            max=100; progress=volume()
-            setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
-                override fun onProgressChanged(s:SeekBar?,p:Int,fromUser:Boolean){value.text="$label $p%"; if(fromUser)setVolume(p)}
-                override fun onStartTrackingTouch(s:SeekBar?)=Unit
-                override fun onStopTrackingTouch(s:SeekBar?)=Unit
-            })
-        }
-        val m=Button(this).apply{text="M";setOnClickListener{toggleMute()}}
-        val s=Button(this).apply{text="S";setOnClickListener{toggleSolo()}}
-        assign(m,s,slider,value)
-        val left=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;addView(value);addView(slider,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(28)))}
-        row.addView(left,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-        row.addView(m,LinearLayout.LayoutParams(dp(42),dp(38)).apply{marginStart=dp(3)})
-        row.addView(s,LinearLayout.LayoutParams(dp(42),dp(38)).apply{marginStart=dp(3)})
-        return row
-    }
-
-    private fun updateStemButtons() {
-        if (::clickMuteButton.isInitialized) clickMuteButton.text = if (clickMuted) "M ✓" else "M"
-        if (::drumsMuteButton.isInitialized) drumsMuteButton.text = if (drumsMuted) "M ✓" else "M"
-        if (::bassMuteButton.isInitialized) bassMuteButton.text = if (bassMuted) "M ✓" else "M"
-        if (::clickSoloButton.isInitialized) clickSoloButton.text = if (clickSolo) "S ✓" else "S"
-        if (::drumsSoloButton.isInitialized) drumsSoloButton.text = if (drumsSolo) "S ✓" else "S"
-        if (::bassSoloButton.isInitialized) bassSoloButton.text = if (bassSolo) "S ✓" else "S"
-    }
-
-    private fun syncMixerUi() {
-        if (::clickSlider.isInitialized) { clickSlider.progress=clickVolume; clickValue.text="CLICK $clickVolume%" }
-        if (::drumsSlider.isInitialized) { drumsSlider.progress=drumsVolume; drumsValue.text="DRUMS $drumsVolume%" }
-        if (::bassSlider.isInitialized) { bassSlider.progress=bassVolume; bassValue.text="BASS $bassVolume%" }
-        updateStemButtons()
-    }
-
-    private fun openPicker(requestCode:Int) {
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type="audio/wav"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/wav","audio/x-wav","audio/wave"))
-        }, requestCode)
-    }
-
-    @Deprecated("Kept for prototype")
-    override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
-        super.onActivityResult(requestCode,resultCode,data)
-        if(resultCode!=RESULT_OK || requestCode !in listOf(PICK_CLICK,PICK_DRUMS,PICK_BASS)) return
-        val uri=data?.data ?: return
-        try { contentResolver.takePersistableUriPermission(uri,data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch(_:SecurityException) {}
-        val name=getDisplayName(uri) ?: "Archivo WAV"
-        if(!name.lowercase().endsWith(".wav")) { Toast.makeText(this,"Solo WAV",Toast.LENGTH_LONG).show(); return }
-        val pickerGeneration=++songLoadGeneration
-        loadingSavedSong=false
-        statusView.text="Cargando $name…"
-        Thread {
-            try {
-                val stem=loadPcm16Wav(uri,name)
-                runOnUiThread {
-                    if(pickerGeneration!=songLoadGeneration) return@runOnUiThread
-                    when(requestCode){
-                        PICK_CLICK->{clickUri=uri;clickStem=stem;clickNameView.text="Click: $name"}
-                        PICK_DRUMS->{drumsUri=uri;drumsStem=stem;drumsNameView.text="Drums: $name"}
-                        PICK_BASS->{bassUri=uri;bassStem=stem;bassNameView.text="Bass: $name"}
-                    }
-                    validateLoadedStems()
-                }
-            } catch(e:Exception) {
-                runOnUiThread {
-                    if(pickerGeneration==songLoadGeneration) statusView.text="No se pudo cargar: ${e.message ?: "WAV incompatible"}"
-                }
-            }
-        }.start()
-    }
-
-    private fun newSong() {
-        ++songLoadGeneration
-        loadingSavedSong=false
-        stopPlayback()
-        selectedSongIndex=-1
-        titleInput.setText("")
-        clickUri=null; drumsUri=null; bassUri=null
-        clickStem=null; drumsStem=null; bassStem=null
-        clickVolume=100; drumsVolume=100; bassVolume=100
-        clickMuted=false; drumsMuted=false; bassMuted=false
-        clickSolo=false; drumsSolo=false; bassSolo=false
-        clickNameView.text="Click: ninguno"; drumsNameView.text="Drums: ninguno"; bassNameView.text="Bass: ninguno"
-        currentFrame=0; totalFrames=0
-        currentTimeView.text="0:00"; durationView.text="0:00"; seekBar.progress=0; seekBar.max=1
-        syncMixerUi(); updateControls()
-        statusView.text="Nueva canción. Carga sus 3 WAV y ponle nombre."
-    }
-
-    private fun saveCurrentSong() {
-        val title=titleInput.text.toString().trim()
-        if(title.isEmpty()) { Toast.makeText(this,"Ponle nombre a la canción",Toast.LENGTH_SHORT).show(); return }
-        if(!allLoaded()) { Toast.makeText(this,"Carga 3 WAV compatibles antes de guardar",Toast.LENGTH_SHORT).show(); return }
-        val c=clickUri?.toString(); val d=drumsUri?.toString(); val b=bassUri?.toString()
-        if(c==null || d==null || b==null) { Toast.makeText(this,"Carga Click, Drums y Bass",Toast.LENGTH_SHORT).show(); return }
-        val preset=SongPreset(title,c,d,b,clickVolume,drumsVolume,bassVolume,clickMuted,drumsMuted,bassMuted,clickSolo,drumsSolo,bassSolo)
-        if(selectedSongIndex in songs.indices) songs[selectedSongIndex]=preset else { songs.add(preset); selectedSongIndex=songs.lastIndex }
-        saveSongLibrary(); refreshSongSpinner(); songSpinner.setSelection(selectedSongIndex)
-        getSharedPreferences(PREFS,MODE_PRIVATE).edit().putInt(LAST_SONG_KEY,selectedSongIndex).apply()
-        statusView.text="Canción guardada: $title"
-    }
-
-    private fun previousSong() {
-        if(songs.isEmpty()) return
-        val next=if(selectedSongIndex<=0) songs.lastIndex else selectedSongIndex-1
-        loadSong(next)
-    }
-
-    private fun nextSong() {
-        if(songs.isEmpty()) return
-        val next=if(selectedSongIndex<0 || selectedSongIndex>=songs.lastIndex) 0 else selectedSongIndex+1
-        loadSong(next)
-    }
-
-    private fun loadSong(index:Int) {
-        if(index !in songs.indices) return
+    private fun fileLabel(t:String,dp:(Int)->Int)=TextView(this).apply{text=t;setTextColor(Color.rgb(190,199,210));textSize=12f;setPadding(0,dp(2),0,dp(2))}
+    private fun stemControls(label:String,dp:(Int)->Int,volume:()->Int,setVolume:(Int)->Unit,toggleMute:()->Unit,toggleSolo:()->Unit,assign:(Button,Button,SeekBar,TextView)->Unit):LinearLayout{val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL};val value=TextView(this).apply{text="$label ${volume()}%";setTextColor(Color.LTGRAY);textSize=11f};val slider=SeekBar(this).apply{max=100;progress=volume();setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{override fun onProgressChanged(s:SeekBar?,p:Int,fromUser:Boolean){value.text="$label $p%";if(fromUser)setVolume(p)};override fun onStartTrackingTouch(s:SeekBar?)=Unit;override fun onStopTrackingTouch(s:SeekBar?)=Unit})};val m=Button(this).apply{text="M";setOnClickListener{toggleMute()}};val s=Button(this).apply{text="S";setOnClickListener{toggleSolo()}};assign(m,s,slider,value);val left=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;addView(value);addView(slider,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(28)))};row.addView(left,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f));row.addView(m,LinearLayout.LayoutParams(dp(42),dp(38)).apply{marginStart=dp(3)});row.addView(s,LinearLayout.LayoutParams(dp(42),dp(38)).apply{marginStart=dp(3)});return row}
+    private fun updateStemButtons(){if(::clickMuteButton.isInitialized)clickMuteButton.text=if(clickMuted)"M ✓" else "M";if(::drumsMuteButton.isInitialized)drumsMuteButton.text=if(drumsMuted)"M ✓" else "M";if(::bassMuteButton.isInitialized)bassMuteButton.text=if(bassMuted)"M ✓" else "M";if(::clickSoloButton.isInitialized)clickSoloButton.text=if(clickSolo)"S ✓" else "S";if(::drumsSoloButton.isInitialized)drumsSoloButton.text=if(drumsSolo)"S ✓" else "S";if(::bassSoloButton.isInitialized)bassSoloButton.text=if(bassSolo)"S ✓" else "S"}
+    private fun syncMixerUi(){if(::clickSlider.isInitialized){clickSlider.progress=clickVolume;clickValue.text="CLICK $clickVolume%"};if(::drumsSlider.isInitialized){drumsSlider.progress=drumsVolume;drumsValue.text="DRUMS $drumsVolume%"};if(::bassSlider.isInitialized){bassSlider.progress=bassVolume;bassValue.text="BASS $bassVolume%"};updateStemButtons()}
+    private fun openPicker(requestCode:Int){startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply{addCategory(Intent.CATEGORY_OPENABLE);type="audio/wav";putExtra(Intent.EXTRA_MIME_TYPES,arrayOf("audio/wav","audio/x-wav","audio/wave"))},requestCode)}
+    @Deprecated("Kept for prototype") override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(resultCode!=RESULT_OK||requestCode !in listOf(PICK_CLICK,PICK_DRUMS,PICK_BASS))return;val uri=data?.data?:return;try{contentResolver.takePersistableUriPermission(uri,data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)}catch(_:SecurityException){};val name=getDisplayName(uri)?:"Archivo WAV";if(!name.lowercase().endsWith(".wav")){Toast.makeText(this,"Solo WAV",Toast.LENGTH_LONG).show();return};val pickerGeneration=++songLoadGeneration;loadingSavedSong=false;statusView.text="Cargando $name…";Thread{try{val stem=loadPcm16Wav(uri,name);runOnUiThread{if(pickerGeneration!=songLoadGeneration)return@runOnUiThread;when(requestCode){PICK_CLICK->{clickUri=uri;clickStem=stem;clickNameView.text="Click: $name"};PICK_DRUMS->{drumsUri=uri;drumsStem=stem;drumsNameView.text="Drums: $name"};PICK_BASS->{bassUri=uri;bassStem=stem;bassNameView.text="Bass: $name"}};validateLoadedStems()}}catch(e:Exception){runOnUiThread{if(pickerGeneration==songLoadGeneration)statusView.text="No se pudo cargar: ${e.message?:"WAV incompatible"}"}}}.start()}
+    private fun newSong(){++songLoadGeneration;loadingSavedSong=false;stopPlayback();selectedSongIndex=-1;titleInput.setText("");clickUri=null;drumsUri=null;bassUri=null;clickStem=null;drumsStem=null;bassStem=null;clickVolume=100;drumsVolume=100;bassVolume=100;clickMuted=false;drumsMuted=false;bassMuted=false;clickSolo=false;drumsSolo=false;bassSolo=false;clickNameView.text="Click: ninguno";drumsNameView.text="Drums: ninguno";bassNameView.text="Bass: ninguno";currentFrame=0;totalFrames=0;currentTimeView.text="0:00";durationView.text="0:00";seekBar.progress=0;seekBar.max=1;syncMixerUi();updateControls();statusView.text="Nueva canción. Carga sus 3 WAV y ponle nombre."}
+    private fun saveCurrentSong(){val title=titleInput.text.toString().trim();if(title.isEmpty()){Toast.makeText(this,"Ponle nombre a la canción",Toast.LENGTH_SHORT).show();return};if(!allLoaded()){Toast.makeText(this,"Carga 3 WAV compatibles antes de guardar",Toast.LENGTH_SHORT).show();return};val c=clickUri?.toString();val d=drumsUri?.toString();val b=bassUri?.toString();if(c==null||d==null||b==null){Toast.makeText(this,"Carga Click, Drums y Bass",Toast.LENGTH_SHORT).show();return};val preset=SongPreset(title,c,d,b,clickVolume,drumsVolume,bassVolume,clickMuted,drumsMuted,bassMuted,clickSolo,drumsSolo,bassSolo);if(selectedSongIndex in songs.indices)songs[selectedSongIndex]=preset else{songs.add(preset);selectedSongIndex=songs.lastIndex};saveSongLibrary();refreshSongSpinner();songSpinner.setSelection(selectedSongIndex);getSharedPreferences(PREFS,MODE_PRIVATE).edit().putInt(LAST_SONG_KEY,selectedSongIndex).apply();statusView.text="Canción guardada: $title"}
+    private fun previousSong(){if(songs.isEmpty())return;loadSong(if(selectedSongIndex<=0)songs.lastIndex else selectedSongIndex-1)}
+    private fun nextSong(){if(songs.isEmpty())return;loadSong(if(selectedSongIndex<0||selectedSongIndex>=songs.lastIndex)0 else selectedSongIndex+1)}
+    private fun loadSong(index:Int){
+        if(index !in songs.indices)return
         val loadGeneration=++songLoadGeneration
-        stopPlayback()
-        selectedSongIndex=index
-        songSpinner.setSelection(index)
-        val s=songs[index]
-        titleInput.setText(s.title)
-        clickVolume=s.clickVolume; drumsVolume=s.drumsVolume; bassVolume=s.bassVolume
-        clickMuted=s.clickMuted; drumsMuted=s.drumsMuted; bassMuted=s.bassMuted
-        clickSolo=s.clickSolo; drumsSolo=s.drumsSolo; bassSolo=s.bassSolo
-        syncMixerUi()
-        loadingSavedSong=true
-        statusView.text="Abriendo ${s.title}…"
-        Thread {
-            try {
-                val cu=Uri.parse(s.clickUri); val du=Uri.parse(s.drumsUri); val bu=Uri.parse(s.bassUri)
-                val c=loadPcm16Wav(cu,getDisplayName(cu) ?: "Click")
-                val d=loadPcm16Wav(du,getDisplayName(du) ?: "Drums")
-                val b=loadPcm16Wav(bu,getDisplayName(bu) ?: "Bass")
-                runOnUiThread {
-                    if(loadGeneration!=songLoadGeneration) return@runOnUiThread
-                    clickUri=cu; drumsUri=du; bassUri=bu
-                    clickStem=c; drumsStem=d; bassStem=b
-                    clickNameView.text="Click: ${c.name}"; drumsNameView.text="Drums: ${d.name}"; bassNameView.text="Bass: ${b.name}"
-                    loadingSavedSong=false
-                    validateLoadedStems()
-                    statusView.text="${s.title} lista."
-                    getSharedPreferences(PREFS,MODE_PRIVATE).edit().putInt(LAST_SONG_KEY,index).apply()
-                }
-            } catch(e:Exception) {
-                runOnUiThread {
-                    if(loadGeneration==songLoadGeneration) {
-                        loadingSavedSong=false
-                        statusView.text="No se pudo abrir ${s.title}: ${e.message ?: "archivo no disponible"}"
-                    }
-                }
-            }
-        }.start()
+        stopPlayback();selectedSongIndex=index;songSpinner.setSelection(index)
+        clickStem=null;drumsStem=null;bassStem=null;clickUri=null;drumsUri=null;bassUri=null;currentFrame=0;totalFrames=0;updateControls()
+        val s=songs[index];titleInput.setText(s.title);clickVolume=s.clickVolume;drumsVolume=s.drumsVolume;bassVolume=s.bassVolume;clickMuted=s.clickMuted;drumsMuted=s.drumsMuted;bassMuted=s.bassMuted;clickSolo=s.clickSolo;drumsSolo=s.drumsSolo;bassSolo=s.bassSolo;syncMixerUi();loadingSavedSong=true;statusView.text="Cargando ${s.title}… espera para reproducir."
+        Thread{try{val cu=Uri.parse(s.clickUri);val du=Uri.parse(s.drumsUri);val bu=Uri.parse(s.bassUri);val c=loadPcm16Wav(cu,getDisplayName(cu)?:"Click");val d=loadPcm16Wav(du,getDisplayName(du)?:"Drums");val b=loadPcm16Wav(bu,getDisplayName(bu)?:"Bass");runOnUiThread{if(loadGeneration!=songLoadGeneration)return@runOnUiThread;clickUri=cu;drumsUri=du;bassUri=bu;clickStem=c;drumsStem=d;bassStem=b;clickNameView.text="Click: ${c.name}";drumsNameView.text="Drums: ${d.name}";bassNameView.text="Bass: ${b.name}";loadingSavedSong=false;validateLoadedStems();statusView.text="${s.title} lista.";getSharedPreferences(PREFS,MODE_PRIVATE).edit().putInt(LAST_SONG_KEY,index).apply()}}catch(e:Exception){runOnUiThread{if(loadGeneration==songLoadGeneration){loadingSavedSong=false;updateControls();statusView.text="No se pudo abrir ${s.title}: ${e.message?:"archivo no disponible"}"}}}}.start()
     }
-
-    private fun refreshSongSpinner() {
-        val labels=if(songs.isEmpty()) listOf("Sin canciones guardadas") else songs.mapIndexed { i,s -> "${i+1}. ${s.title}" }
-        songSpinner.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,labels)
-        if(selectedSongIndex in songs.indices) songSpinner.setSelection(selectedSongIndex)
-    }
-
-    private fun restoreLastSong() {
-        if(songs.isEmpty()) { newSong(); return }
-        val idx=getSharedPreferences(PREFS,MODE_PRIVATE).getInt(LAST_SONG_KEY,0).coerceIn(0,songs.lastIndex)
-        loadSong(idx)
-    }
-
-    private fun loadSongLibrary() {
-        songs.clear()
-        val raw=getSharedPreferences(PREFS,MODE_PRIVATE).getString(SONGS_KEY,"[]") ?: "[]"
-        try {
-            val arr=JSONArray(raw)
-            for(i in 0 until arr.length()) {
-                val o=arr.getJSONObject(i)
-                songs.add(SongPreset(
-                    o.optString("title","Canción ${i+1}"),
-                    o.optString("clickUri"),o.optString("drumsUri"),o.optString("bassUri"),
-                    o.optInt("clickVolume",100),o.optInt("drumsVolume",100),o.optInt("bassVolume",100),
-                    o.optBoolean("clickMuted",false),o.optBoolean("drumsMuted",false),o.optBoolean("bassMuted",false),
-                    o.optBoolean("clickSolo",false),o.optBoolean("drumsSolo",false),o.optBoolean("bassSolo",false)
-                ))
-            }
-        } catch(_:Exception) {}
-    }
-
-    private fun saveSongLibrary() {
-        val arr=JSONArray()
-        songs.forEach { s ->
-            arr.put(JSONObject().apply {
-                put("title",s.title); put("clickUri",s.clickUri); put("drumsUri",s.drumsUri); put("bassUri",s.bassUri)
-                put("clickVolume",s.clickVolume); put("drumsVolume",s.drumsVolume); put("bassVolume",s.bassVolume)
-                put("clickMuted",s.clickMuted); put("drumsMuted",s.drumsMuted); put("bassMuted",s.bassMuted)
-                put("clickSolo",s.clickSolo); put("drumsSolo",s.drumsSolo); put("bassSolo",s.bassSolo)
-            })
-        }
-        getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(SONGS_KEY,arr.toString()).apply()
-    }
-
-    private fun validateLoadedStems() {
-        val stems=listOfNotNull(clickStem,drumsStem,bassStem)
-        if(stems.isEmpty()){updateControls();return}
-        val rates=stems.map{it.sampleRate}.toSet()
-        if(rates.size>1){statusView.text="Los WAV deben usar el mismo sample rate.";updateControls();return}
-        sampleRate=stems.first().sampleRate
-        totalFrames=stems.maxOf{it.samples.size}
-        val durationMs=((totalFrames.toLong()*1000L)/sampleRate).toInt()
-        seekBar.max=durationMs.coerceAtLeast(1)
-        durationView.text=formatTime(durationMs)
-        currentFrame=0
-        updateControls()
-        if(allLoaded()) statusView.text="3 WAV listos."
-    }
-
-    private fun allLoaded()=clickStem!=null && drumsStem!=null && bassStem!=null &&
-        setOf(clickStem!!.sampleRate,drumsStem!!.sampleRate,bassStem!!.sampleRate).size==1
-
-    private fun startPlayback(){if(playing||!allLoaded())return;playing=true;playButton.text="❚❚ PAUSA";statusView.text="Reproduciendo.";startAudioEngine()}
+    private fun refreshSongSpinner(){val labels=if(songs.isEmpty())listOf("Sin canciones guardadas") else songs.mapIndexed{i,s->"${i+1}. ${s.title}"};songSpinner.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,labels);if(selectedSongIndex in songs.indices)songSpinner.setSelection(selectedSongIndex)}
+    private fun restoreLastSong(){if(songs.isEmpty()){newSong();return};loadSong(getSharedPreferences(PREFS,MODE_PRIVATE).getInt(LAST_SONG_KEY,0).coerceIn(0,songs.lastIndex))}
+    private fun loadSongLibrary(){songs.clear();val raw=getSharedPreferences(PREFS,MODE_PRIVATE).getString(SONGS_KEY,"[]")?:"[]";try{val arr=JSONArray(raw);for(i in 0 until arr.length()){val o=arr.getJSONObject(i);songs.add(SongPreset(o.optString("title","Canción ${i+1}"),o.optString("clickUri"),o.optString("drumsUri"),o.optString("bassUri"),o.optInt("clickVolume",100),o.optInt("drumsVolume",100),o.optInt("bassVolume",100),o.optBoolean("clickMuted",false),o.optBoolean("drumsMuted",false),o.optBoolean("bassMuted",false),o.optBoolean("clickSolo",false),o.optBoolean("drumsSolo",false),o.optBoolean("bassSolo",false)))}}catch(_:Exception){}}
+    private fun saveSongLibrary(){val arr=JSONArray();songs.forEach{s->arr.put(JSONObject().apply{put("title",s.title);put("clickUri",s.clickUri);put("drumsUri",s.drumsUri);put("bassUri",s.bassUri);put("clickVolume",s.clickVolume);put("drumsVolume",s.drumsVolume);put("bassVolume",s.bassVolume);put("clickMuted",s.clickMuted);put("drumsMuted",s.drumsMuted);put("bassMuted",s.bassMuted);put("clickSolo",s.clickSolo);put("drumsSolo",s.drumsSolo);put("bassSolo",s.bassSolo)})};getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString(SONGS_KEY,arr.toString()).apply()}
+    private fun validateLoadedStems(){val stems=listOfNotNull(clickStem,drumsStem,bassStem);if(stems.isEmpty()){updateControls();return};val rates=stems.map{it.sampleRate}.toSet();if(rates.size>1){statusView.text="Los WAV deben usar el mismo sample rate.";updateControls();return};sampleRate=stems.first().sampleRate;totalFrames=stems.maxOf{it.samples.size};val durationMs=((totalFrames.toLong()*1000L)/sampleRate).toInt();seekBar.max=durationMs.coerceAtLeast(1);durationView.text=formatTime(durationMs);currentFrame=0;updateControls();if(allLoaded())statusView.text="3 WAV listos."}
+    private fun allLoaded()=clickStem!=null&&drumsStem!=null&&bassStem!=null&&setOf(clickStem!!.sampleRate,drumsStem!!.sampleRate,bassStem!!.sampleRate).size==1
+    private fun startPlayback(){if(playing||loadingSavedSong||!allLoaded())return;playing=true;playButton.text="❚❚ PAUSA";statusView.text="Reproduciendo.";startAudioEngine()}
     private fun pausePlayback(){playing=false;generation++;releaseTrack();playButton.text="▶ PLAY";statusView.text="Pausado."}
     private fun stopPlayback(){playing=false;generation++;releaseTrack();currentFrame=0;if(::seekBar.isInitialized)seekBar.progress=0;if(::currentTimeView.isInitialized)currentTimeView.text="0:00";if(::playButton.isInitialized)playButton.text="▶ PLAY"}
-
-    private fun seekToMs(ms:Int){
-        val newFrame=((ms.toLong()*sampleRate)/1000L).toInt().coerceIn(0,totalFrames)
-        val wasPlaying=playing;generation++;releaseTrack();currentFrame=newFrame;if(wasPlaying)startAudioEngine()
-    }
-
-    private fun releaseTrack(){
-        try{audioTrack?.pause()}catch(_:Exception){}
-        try{audioTrack?.flush()}catch(_:Exception){}
-        try{audioTrack?.release()}catch(_:Exception){}
-        audioTrack=null
-    }
-
-    private fun startAudioEngine(){
-        val click=clickStem?:return;val drums=drumsStem?:return;val bass=bassStem?:return
-        val localGeneration=++generation
-        val minBuffer=AudioTrack.getMinBufferSize(sampleRate,AudioFormat.CHANNEL_OUT_STEREO,AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(4096)
-        val track=AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-            .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
-            .setBufferSizeInBytes(minBuffer*2).setTransferMode(AudioTrack.MODE_STREAM).build()
-        audioTrack=track;track.play()
-        Thread {
-            val framesPerBlock=1024;val out=ShortArray(framesPerBlock*2)
-            while(playing&&localGeneration==generation){
-                var frame=currentFrame
-                if(frame>=totalFrames){if(loopEnabled){currentFrame=0;frame=0}else{playing=false;handler.post{playButton.text="▶ PLAY";statusView.text="Terminó la canción."};break}}
-                val frames=minOf(framesPerBlock,totalFrames-frame)
-                val anySolo=clickSolo||drumsSolo||bassSolo
-                val cg=gain(clickVolume,clickMuted,clickSolo,anySolo);val dg=gain(drumsVolume,drumsMuted,drumsSolo,anySolo);val bg=gain(bassVolume,bassMuted,bassSolo,anySolo)
-                var p=0
-                for(i in 0 until frames){
-                    val idx=frame+i
-                    val c=if(idx<click.samples.size)click.samples[idx].toInt() else 0
-                    val d=if(idx<drums.samples.size)drums.samples[idx].toInt() else 0
-                    val b=if(idx<bass.samples.size)bass.samples[idx].toInt() else 0
-                    out[p++]=(c*cg).roundToInt().coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort()
-                    out[p++]=((d*dg)+(b*bg)).roundToInt().coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort()
-                }
-                if(track.write(out,0,frames*2,AudioTrack.WRITE_BLOCKING)<0)break
-                currentFrame+=frames
-            }
-            try{track.stop()}catch(_:Exception){};try{track.release()}catch(_:Exception){};if(audioTrack===track)audioTrack=null
-        }.apply{name="SequencePlayerAudio08";priority=Thread.MAX_PRIORITY;start()}
-    }
-
-    private fun gain(volume:Int,muted:Boolean,solo:Boolean,anySolo:Boolean):Float{
-        if(muted)return 0f;if(anySolo&&!solo)return 0f;return volume.coerceIn(0,100)/100f
-    }
-
-    private fun updateControls(){
-        val ready=allLoaded()
-        if(::playButton.isInitialized)playButton.isEnabled=ready
-        if(::stopButton.isInitialized)stopButton.isEnabled=ready
-        if(::loopButton.isInitialized)loopButton.isEnabled=ready
-        if(::seekBar.isInitialized)seekBar.isEnabled=ready
-    }
-
-    private fun loadPcm16Wav(uri:Uri,name:String):LoadedStem{
-        val input=BufferedInputStream(contentResolver.openInputStream(uri)?:error("No se pudo abrir el archivo"),128*1024)
-        input.use{stream->
-            if(readFourCc(stream)!="RIFF")error("No es WAV RIFF");readLeInt(stream);if(readFourCc(stream)!="WAVE")error("WAV no válido")
-            var format=-1;var channels=-1;var rate=-1;var bits=-1
-            while(true){
-                val id=readFourCc(stream);val size=readLeInt(stream)
-                when(id){
-                    "fmt "->{if(size<16)error("fmt inválido");format=readLeShort(stream);channels=readLeShort(stream);rate=readLeInt(stream);readLeInt(stream);readLeShort(stream);bits=readLeShort(stream);skipFully(stream,size-16);if((size and 1)==1)skipFully(stream,1)}
-                    "data"->{
-                        if(format!=1)error("Solo PCM");if(bits!=16)error("Solo 16 bits");if(channels<1)error("Canales inválidos");if(rate<=0)error("Sample rate inválido")
-                        val bytesPerFrame=channels*2;val count=size/bytesPerFrame;val samples=ShortArray(count);val buf=ByteArray(bytesPerFrame)
-                        for(frame in 0 until count){readFully(stream,buf,0,bytesPerFrame);var sum=0;var off=0;repeat(channels){val lo=buf[off].toInt() and 0xff;val hi=buf[off+1].toInt();sum+=((hi shl 8) or lo).toShort().toInt();off+=2};samples[frame]=(sum/channels).coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort()}
-                        return LoadedStem(name,rate,samples)
-                    }
-                    else->{skipFully(stream,size);if((size and 1)==1)skipFully(stream,1)}
-                }
-            }
-        }
-    }
-
+    private fun seekToMs(ms:Int){val newFrame=((ms.toLong()*sampleRate)/1000L).toInt().coerceIn(0,totalFrames);val wasPlaying=playing;generation++;releaseTrack();currentFrame=newFrame;if(wasPlaying)startAudioEngine()}
+    private fun releaseTrack(){try{audioTrack?.pause()}catch(_:Exception){};try{audioTrack?.flush()}catch(_:Exception){};try{audioTrack?.release()}catch(_:Exception){};audioTrack=null}
+    private fun startAudioEngine(){val click=clickStem?:return;val drums=drumsStem?:return;val bass=bassStem?:return;val localGeneration=++generation;val minBuffer=AudioTrack.getMinBufferSize(sampleRate,AudioFormat.CHANNEL_OUT_STEREO,AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(4096);val track=AudioTrack.Builder().setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build()).setBufferSizeInBytes(minBuffer*2).setTransferMode(AudioTrack.MODE_STREAM).build();audioTrack=track;track.play();Thread{val framesPerBlock=1024;val out=ShortArray(framesPerBlock*2);while(playing&&localGeneration==generation){var frame=currentFrame;if(frame>=totalFrames){if(loopEnabled){currentFrame=0;frame=0}else{playing=false;handler.post{playButton.text="▶ PLAY";statusView.text="Terminó la canción."};break}};val frames=minOf(framesPerBlock,totalFrames-frame);val anySolo=clickSolo||drumsSolo||bassSolo;val cg=gain(clickVolume,clickMuted,clickSolo,anySolo);val dg=gain(drumsVolume,drumsMuted,drumsSolo,anySolo);val bg=gain(bassVolume,bassMuted,bassSolo,anySolo);var p=0;for(i in 0 until frames){val idx=frame+i;val c=if(idx<click.samples.size)click.samples[idx].toInt() else 0;val d=if(idx<drums.samples.size)drums.samples[idx].toInt() else 0;val b=if(idx<bass.samples.size)bass.samples[idx].toInt() else 0;out[p++]=(c*cg).roundToInt().coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort();out[p++]=((d*dg)+(b*bg)).roundToInt().coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort()};if(track.write(out,0,frames*2,AudioTrack.WRITE_BLOCKING)<0)break;currentFrame+=frames};try{track.stop()}catch(_:Exception){};try{track.release()}catch(_:Exception){};if(audioTrack===track)audioTrack=null}.apply{name="SequencePlayerAudio08";priority=Thread.MAX_PRIORITY;start()}}
+    private fun gain(volume:Int,muted:Boolean,solo:Boolean,anySolo:Boolean):Float{if(muted)return 0f;if(anySolo&&!solo)return 0f;return volume.coerceIn(0,100)/100f}
+    private fun updateControls(){val ready=allLoaded()&&!loadingSavedSong;if(::playButton.isInitialized)playButton.isEnabled=ready;if(::stopButton.isInitialized)stopButton.isEnabled=ready;if(::loopButton.isInitialized)loopButton.isEnabled=ready;if(::seekBar.isInitialized)seekBar.isEnabled=ready}
+    private fun loadPcm16Wav(uri:Uri,name:String):LoadedStem{val input=BufferedInputStream(contentResolver.openInputStream(uri)?:error("No se pudo abrir el archivo"),128*1024);input.use{stream->if(readFourCc(stream)!="RIFF")error("No es WAV RIFF");readLeInt(stream);if(readFourCc(stream)!="WAVE")error("WAV no válido");var format=-1;var channels=-1;var rate=-1;var bits=-1;while(true){val id=readFourCc(stream);val size=readLeInt(stream);when(id){"fmt "->{if(size<16)error("fmt inválido");format=readLeShort(stream);channels=readLeShort(stream);rate=readLeInt(stream);readLeInt(stream);readLeShort(stream);bits=readLeShort(stream);skipFully(stream,size-16);if((size and 1)==1)skipFully(stream,1)};"data"->{if(format!=1)error("Solo PCM");if(bits!=16)error("Solo 16 bits");if(channels<1)error("Canales inválidos");if(rate<=0)error("Sample rate inválido");val bytesPerFrame=channels*2;val count=size/bytesPerFrame;val samples=ShortArray(count);val buf=ByteArray(bytesPerFrame);for(frame in 0 until count){readFully(stream,buf,0,bytesPerFrame);var sum=0;var off=0;repeat(channels){val lo=buf[off].toInt() and 0xff;val hi=buf[off+1].toInt();sum+=((hi shl 8) or lo).toShort().toInt();off+=2};samples[frame]=(sum/channels).coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort()};return LoadedStem(name,rate,samples)};else->{skipFully(stream,size);if((size and 1)==1)skipFully(stream,1)}}}}}
     private fun readFourCc(input:InputStream):String{val b=ByteArray(4);readFully(input,b,0,4);return String(b,Charsets.US_ASCII)}
     private fun readLeInt(input:InputStream):Int{val a=input.read();val b=input.read();val c=input.read();val d=input.read();if(a<0||b<0||c<0||d<0)throw EOFException();return a or(b shl 8)or(c shl 16)or(d shl 24)}
     private fun readLeShort(input:InputStream):Int{val a=input.read();val b=input.read();if(a<0||b<0)throw EOFException();return a or(b shl 8)}
@@ -584,6 +106,5 @@ class MainActivityV08 : Activity() {
     private fun readFully(input:InputStream,buf:ByteArray,off:Int,len:Int){var total=0;while(total<len){val n=input.read(buf,off+total,len-total);if(n<0)throw EOFException();total+=n}}
     private fun getDisplayName(uri:Uri):String?{contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use{c->val i=c.getColumnIndex(OpenableColumns.DISPLAY_NAME);if(i>=0&&c.moveToFirst())return c.getString(i)};return uri.lastPathSegment}
     private fun formatTime(ms:Int):String{val sec=(ms/1000).coerceAtLeast(0);return "%d:%02d".format(sec/60,sec%60)}
-
     override fun onDestroy(){playing=false;generation++;songLoadGeneration++;handler.removeCallbacks(progressUpdater);releaseTrack();super.onDestroy()}
 }
