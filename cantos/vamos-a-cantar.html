@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Prueba de transposición</title>
+    <title>Vamos a Cantar - Cancionero El Mesías</title>
 
     <script
         src="https://www.verovio.org/javascript/latest/verovio-toolkit-wasm.js"
@@ -12,90 +12,218 @@
     </script>
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
             margin: 0;
+            font-family: Arial, sans-serif;
             background: #f4f4f4;
+            color: #222;
+        }
+
+        header {
+            background: #222;
+            color: white;
+            padding: 22px 20px;
+        }
+
+        header a {
+            color: white;
+            text-decoration: none;
+            opacity: 0.85;
+        }
+
+        header a:hover {
+            opacity: 1;
         }
 
         main {
-            max-width: 1100px;
+            max-width: 1200px;
             margin: 30px auto;
-            padding: 20px;
+            padding: 0 20px;
+        }
+
+        .canto {
             background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            margin: 0 0 5px;
+            font-size: 34px;
+        }
+
+        .autor {
+            color: #777;
+            margin-bottom: 3px;
+        }
+
+        .categoria {
+            color: #777;
+            margin-bottom: 25px;
         }
 
         .controles {
             display: flex;
-            gap: 10px;
             align-items: center;
+            justify-content: center;
             flex-wrap: wrap;
+            gap: 10px;
+
+            padding: 15px;
             margin-bottom: 25px;
+
+            background: #f4f4f4;
+            border-radius: 12px;
         }
 
-        button, select {
-            padding: 10px 15px;
+        .tonalidad {
+            font-weight: bold;
+        }
+
+        button,
+        select {
+            border: 1px solid #ccc;
+            background: white;
+            padding: 10px 14px;
+            border-radius: 8px;
             font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover,
+        select:hover {
+            background: #ededed;
+        }
+
+        #estado {
+            padding: 25px;
+            text-align: center;
+            color: #777;
+        }
+
+        .partitura-contenedor {
+            width: 100%;
+            overflow-x: auto;
+            padding-bottom: 8px;
         }
 
         #partitura {
-            overflow-x: auto;
-            min-width: 700px;
+            min-width: 900px;
         }
 
         #partitura svg {
+            display: block;
             width: 100%;
             height: auto;
         }
 
-        #estado {
-            padding: 20px;
+        footer {
+            text-align: center;
+            padding: 30px 20px;
+            color: #777;
+            font-size: 14px;
+        }
+
+        @media (max-width: 700px) {
+
+            main {
+                margin-top: 15px;
+                padding: 0 8px;
+            }
+
+            .canto {
+                padding: 18px 10px;
+                border-radius: 12px;
+            }
+
+            h1 {
+                font-size: 26px;
+            }
+
+            .controles {
+                justify-content: flex-start;
+            }
+
+            #partitura {
+                min-width: 760px;
+            }
         }
     </style>
 </head>
 
 <body>
 
+<header>
+    <a href="../index.html">
+        ← Volver al cancionero
+    </a>
+</header>
+
 <main>
 
-    <h1>Vamos a Cantar</h1>
+    <div class="canto">
 
-    <div class="controles">
+        <h1>Vamos a Cantar</h1>
 
-        <strong>Tonalidad:</strong>
+        <div class="autor">
+            Omar Rodriguez
+        </div>
 
-        <button id="bajar">
-            −½
-        </button>
+        <div class="categoria">
+            Alabanza
+        </div>
 
-        <select id="tono">
-            <option value="0">E♭</option>
-            <option value="1">E</option>
-            <option value="2">F</option>
-            <option value="3">F♯</option>
-            <option value="4">G</option>
-            <option value="5">A♭</option>
-            <option value="6">A</option>
-            <option value="7">B♭</option>
-            <option value="8">B</option>
-            <option value="9">C</option>
-            <option value="10">D♭</option>
-            <option value="11">D</option>
-        </select>
+        <div class="controles">
 
-        <button id="subir">
-            +½
-        </button>
+            <span class="tonalidad">
+                Tonalidad:
+            </span>
+
+            <button id="bajar">
+                −½
+            </button>
+
+            <select id="tono">
+                <option value="0">E♭</option>
+                <option value="1">E</option>
+                <option value="2">F</option>
+                <option value="3">F♯</option>
+                <option value="4">G</option>
+                <option value="5">A♭</option>
+                <option value="6">A</option>
+                <option value="7">B♭</option>
+                <option value="8">B</option>
+                <option value="9">C</option>
+                <option value="10">D♭</option>
+                <option value="11">D</option>
+            </select>
+
+            <button id="subir">
+                +½
+            </button>
+
+        </div>
+
+        <div id="estado">
+            Cargando chart...
+        </div>
+
+        <div class="partitura-contenedor">
+            <div id="partitura"></div>
+        </div>
 
     </div>
-
-    <div id="estado">
-        Cargando...
-    </div>
-
-    <div id="partitura"></div>
 
 </main>
+
+<footer>
+    Cancionero de la Iglesia El Mesías
+</footer>
 
 
 <script>
@@ -124,13 +252,6 @@ document.addEventListener(
 
             function cargarYTransponer() {
 
-                /*
-                IMPORTANTE:
-                ponemos la transposición
-                ANTES de volver a cargar
-                el archivo.
-                */
-
                 const semitonos =
                     Number(selector.value);
 
@@ -154,15 +275,19 @@ document.addEventListener(
 
                     header: "none",
 
-                    footer: "none"
+                    footer: "none",
 
+                    pageMarginTop: 40,
+
+                    pageMarginBottom: 40,
+
+                    pageMarginLeft: 40,
+
+                    pageMarginRight: 40,
+
+                    minLastJustification: 0
                 });
 
-
-                /*
-                Volvemos a cargar siempre
-                el archivo ORIGINAL.
-                */
 
                 const cargado =
                     toolkit.loadZipDataBuffer(
@@ -175,7 +300,7 @@ document.addEventListener(
                     document
                         .getElementById("estado")
                         .innerHTML =
-                        "Error cargando el MXL.";
+                        "No se pudo cargar el chart.";
 
                     return;
                 }
@@ -186,10 +311,6 @@ document.addEventListener(
                     .style.display =
                     "none";
 
-
-                /*
-                Renderizamos de nuevo.
-                */
 
                 const svg =
                     toolkit.renderToSVG(1);
@@ -202,11 +323,6 @@ document.addEventListener(
 
             }
 
-
-            /*
-            Primera carga:
-            tonalidad original Eb.
-            */
 
             cargarYTransponer();
 
