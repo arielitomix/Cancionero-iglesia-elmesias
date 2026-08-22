@@ -16,21 +16,27 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import kotlin.math.abs
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.EOFException
+import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
+import kotlin.math.max
 
 class MainActivity : Activity() {
 
     companion object {
         private const val PICK_CLICK = 1001
         private const val PICK_STEM = 1002
-        private const val SYNC_TOLERANCE_MS = 45
     }
 
-    private var clickPlayer: MediaPlayer? = null
-    private var stemPlayer: MediaPlayer? = null
-    private var clickPrepared = false
-    private var stemPrepared = false
+    private var clickUri: Uri? = null
+    private var stemUri: Uri? = null
+    private var mediaPlayer: MediaPlayer? = null
     private var loopEnabled = false
+    private var mixReady = false
+    private var isBuildingMix = false
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -46,26 +52,15 @@ class MainActivity : Activity() {
 
     private val progressUpdater = object : Runnable {
         override fun run() {
-            val click = clickPlayer
-            val stem = stemPlayer
-            val reference = stem ?: click
-
-            if (reference != null) {
-                val position = reference.currentPosition
+            val player = mediaPlayer
+            if (player != null && mixReady) {
+                val position = player.currentPosition
                 currentTimeView.text = formatTime(position)
-                if (!seekBar.isPressed && reference.duration > 0) {
+                if (!seekBar.isPressed && player.duration > 0) {
                     seekBar.progress = position.coerceAtMost(seekBar.max)
                 }
-
-                if (click != null && stem != null && click.isPlaying && stem.isPlaying) {
-                    val drift = click.currentPosition - stem.currentPosition
-                    if (abs(drift) > SYNC_TOLERANCE_MS) {
-                        click.seekTo(stem.currentPosition)
-                    }
-                }
             }
-
-            handler.postDelayed(this, 250)
+            handler.postDelayed(this, 100)
         }
     }
 
@@ -104,14 +99,14 @@ class MainActivity : Activity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "Prototipo nativo 0.2 · dos stems sincronizados"
+            text = "Prototipo nativo 0.3 · motor WAV de un solo reloj"
             setTextColor(Color.rgb(145, 160, 178))
             textSize = 14f
             setPadding(0, 0, 0, dp(18))
         })
 
         val clickButton = Button(this).apply {
-            text = "+ ELEGIR CLICK"
+            text = "+ ELEGIR CLICK WAV"
             textSize = 15f
             setOnClickListener { openDocumentPicker(PICK_CLICK) }
         }
@@ -129,7 +124,7 @@ class MainActivity : Activity() {
         root.addView(clickNameView)
 
         val stemButton = Button(this).apply {
-            text = "+ ELEGIR STEM / INSTRUMENTO"
+            text = "+ ELEGIR STEM WAV"
             textSize = 15f
             setOnClickListener { openDocumentPicker(PICK_STEM) }
         }
@@ -178,9 +173,7 @@ class MainActivity : Activity() {
                 override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
 
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    val position = seekBar?.progress ?: 0
-                    clickPlayer?.seekTo(position)
-                    stemPlayer?.seekTo(position)
+                    mediaPlayer?.seekTo(seekBar?.progress ?: 0)
                 }
             })
         }
@@ -206,8 +199,7 @@ class MainActivity : Activity() {
             text = "↻ LOOP"
             setOnClickListener {
                 loopEnabled = !loopEnabled
-                clickPlayer?.isLooping = loopEnabled
-                stemPlayer?.isLooping = loopEnabled
+                mediaPlayer?.isLooping = loopEnabled
                 text = if (loopEnabled) "↻ LOOP ✓" else "↻ LOOP"
             }
         }
@@ -221,12 +213,19 @@ class MainActivity : Activity() {
         root.addView(controls)
 
         statusView = TextView(this).apply {
-            text = "Carga Click + Stem para probar sincronía."
+            text = "Carga dos WAV PCM 16-bit exportados desde el mismo inicio."
             setTextColor(Color.rgb(145, 160, 178))
             textSize = 13f
             setPadding(0, dp(20), 0, 0)
         }
         root.addView(statusView)
+
+        root.addView(TextView(this).apply {
+            text = "Salida de prueba: Click = L · Stem = R. Los dos comparten exactamente el mismo reloj de audio."
+            setTextColor(Color.rgb(110, 124, 142))
+            textSize = 12f
+            setPadding(0, dp(10), 0, 0)
+        })
 
         return root
     }
@@ -234,16 +233,8 @@ class MainActivity : Activity() {
     private fun openDocumentPicker(requestCode: Int) {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "audio/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                "audio/wav",
-                "audio/x-wav",
-                "audio/mpeg",
-                "audio/mp4",
-                "audio/aac",
-                "audio/ogg",
-                "audio/flac"
-            ))
+            type = "audio/wav"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/wav", "audio/x-wav", "audio/wave"))
         }
         startActivityForResult(intent, requestCode)
     }
@@ -264,104 +255,310 @@ class MainActivity : Activity() {
         } catch (_: SecurityException) {
         }
 
-        val name = getDisplayName(uri) ?: "Archivo de audio"
+        val name = getDisplayName(uri) ?: "Archivo WAV"
+        if (!name.lowercase().endsWith(".wav")) {
+            Toast.makeText(this, "Esta versión solo acepta archivos WAV", Toast.LENGTH_LONG).show()
+            return
+        }
+
         if (requestCode == PICK_CLICK) {
+            clickUri = uri
             clickNameView.text = "Click: $name"
-            loadPlayer(uri, true)
         } else {
+            stemUri = uri
             stemNameView.text = "Stem: $name"
-            loadPlayer(uri, false)
+        }
+
+        mixReady = false
+        releasePlayer()
+        updateControls()
+
+        if (clickUri != null && stemUri != null) {
+            buildSynchronizedMix()
+        } else {
+            statusView.text = "Un WAV cargado. Falta seleccionar el otro."
         }
     }
 
-    private fun loadPlayer(uri: Uri, isClick: Boolean) {
-        if (isClick) {
-            clickPlayer?.release()
-            clickPlayer = null
-            clickPrepared = false
-        } else {
-            stemPlayer?.release()
-            stemPlayer = null
-            stemPrepared = false
-        }
-        updateControls()
-        statusView.text = "Preparando audio…"
+    private fun buildSynchronizedMix() {
+        if (isBuildingMix) return
+        val click = clickUri ?: return
+        val stem = stemUri ?: return
 
-        val player = MediaPlayer().apply {
-            setDataSource(this@MainActivity, uri)
-            isLooping = loopEnabled
-            setOnPreparedListener { prepared ->
-                if (isClick) clickPrepared = true else stemPrepared = true
-                val maxDuration = listOfNotNull(
-                    clickPlayer?.takeIf { clickPrepared }?.duration,
-                    stemPlayer?.takeIf { stemPrepared }?.duration
-                ).maxOrNull() ?: prepared.duration
-                seekBar.max = maxDuration.coerceAtLeast(1)
-                durationView.text = formatTime(maxDuration)
-                updateControls()
-                statusView.text = if (clickPrepared && stemPrepared) {
-                    "Click + Stem listos. Dale PLAY."
-                } else {
-                    "Un archivo listo. Falta cargar el otro."
+        isBuildingMix = true
+        mixReady = false
+        updateControls()
+        statusView.text = "Preparando mezcla sincronizada…"
+
+        Thread {
+            try {
+                val outputFile = File(cacheDir, "sequence_sync_03.wav")
+                createStereoSyncWav(click, stem, outputFile)
+
+                runOnUiThread {
+                    preparePlayer(outputFile)
+                    isBuildingMix = false
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    isBuildingMix = false
+                    mixReady = false
+                    updateControls()
+                    statusView.text = "No se pudo preparar: ${e.message ?: "WAV incompatible"}"
+                    Toast.makeText(this, statusView.text, Toast.LENGTH_LONG).show()
                 }
             }
+        }.start()
+    }
+
+    private fun preparePlayer(file: File) {
+        releasePlayer()
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(file.absolutePath)
+            isLooping = loopEnabled
+            setOnPreparedListener { player ->
+                seekBar.max = player.duration.coerceAtLeast(1)
+                seekBar.progress = 0
+                durationView.text = formatTime(player.duration)
+                currentTimeView.text = "0:00"
+                mixReady = true
+                updateControls()
+                statusView.text = "Listo: Click L + Stem R, sincronizados muestra por muestra."
+            }
             setOnCompletionListener {
-                if (!loopEnabled && !isAnyPlaying()) {
+                if (!loopEnabled) {
                     playButton.text = "▶ PLAY"
+                    currentTimeView.text = formatTime(it.duration)
                 }
             }
             setOnErrorListener { _, _, _ ->
-                Toast.makeText(this@MainActivity, "No se pudo reproducir este archivo", Toast.LENGTH_LONG).show()
-                if (isClick) clickPrepared = false else stemPrepared = false
+                mixReady = false
                 updateControls()
+                statusView.text = "Error al reproducir la mezcla sincronizada."
                 true
             }
             prepareAsync()
         }
-
-        if (isClick) clickPlayer = player else stemPlayer = player
     }
 
     private fun togglePlayback() {
-        if (!clickPrepared || !stemPrepared) return
+        val player = mediaPlayer ?: return
+        if (!mixReady) return
 
-        if (isAnyPlaying()) {
-            clickPlayer?.pause()
-            stemPlayer?.pause()
+        if (player.isPlaying) {
+            player.pause()
             playButton.text = "▶ PLAY"
             statusView.text = "Pausado."
         } else {
-            val position = maxOf(clickPlayer?.currentPosition ?: 0, stemPlayer?.currentPosition ?: 0)
-            clickPlayer?.seekTo(position)
-            stemPlayer?.seekTo(position)
-            stemPlayer?.start()
-            clickPlayer?.start()
+            player.start()
             playButton.text = "❚❚ PAUSA"
-            statusView.text = "Reproduciendo Click + Stem sincronizados."
+            statusView.text = "Reproduciendo con un solo reloj de audio."
         }
     }
 
     private fun stopPlayback() {
-        clickPlayer?.pause()
-        stemPlayer?.pause()
-        clickPlayer?.seekTo(0)
-        stemPlayer?.seekTo(0)
+        val player = mediaPlayer ?: return
+        if (player.isPlaying) player.pause()
+        player.seekTo(0)
         seekBar.progress = 0
         currentTimeView.text = "0:00"
         playButton.text = "▶ PLAY"
         statusView.text = "Detenido."
     }
 
-    private fun isAnyPlaying(): Boolean {
-        return clickPlayer?.isPlaying == true || stemPlayer?.isPlaying == true
+    private fun updateControls() {
+        val enabled = mixReady && !isBuildingMix
+        playButton.isEnabled = enabled
+        stopButton.isEnabled = enabled
+        loopButton.isEnabled = enabled
+        seekBar.isEnabled = enabled
     }
 
-    private fun updateControls() {
-        val ready = clickPrepared && stemPrepared
-        playButton.isEnabled = ready
-        stopButton.isEnabled = ready
-        loopButton.isEnabled = ready
-        seekBar.isEnabled = ready
+    private data class WavReader(
+        val input: BufferedInputStream,
+        val sampleRate: Int,
+        val channels: Int,
+        val frames: Long,
+        var framesRead: Long = 0
+    ) {
+        private val frameBuffer = ByteArray(channels * 2)
+
+        fun readMonoSample(): Short {
+            if (framesRead >= frames) return 0
+            readFully(input, frameBuffer, 0, frameBuffer.size)
+            var sum = 0
+            var offset = 0
+            repeat(channels) {
+                val lo = frameBuffer[offset].toInt() and 0xff
+                val hi = frameBuffer[offset + 1].toInt()
+                val sample = (hi shl 8) or lo
+                sum += sample.toShort().toInt()
+                offset += 2
+            }
+            framesRead++
+            return (sum / channels).coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+    }
+
+    private fun createStereoSyncWav(clickUri: Uri, stemUri: Uri, outputFile: File) {
+        val clickInput = BufferedInputStream(contentResolver.openInputStream(clickUri)
+            ?: error("No se pudo abrir el click"), 64 * 1024)
+        val stemInput = BufferedInputStream(contentResolver.openInputStream(stemUri)
+            ?: error("No se pudo abrir el stem"), 64 * 1024)
+
+        clickInput.use { clickStream ->
+            stemInput.use { stemStream ->
+                val click = parsePcm16Wav(clickStream)
+                val stem = parsePcm16Wav(stemStream)
+
+                if (click.sampleRate != stem.sampleRate) {
+                    error("Los WAV deben tener el mismo sample rate (${click.sampleRate} vs ${stem.sampleRate} Hz)")
+                }
+
+                val totalFrames = max(click.frames, stem.frames)
+                val dataBytes = totalFrames * 4L
+                if (dataBytes > 0x7fffffffL) error("Los archivos son demasiado largos para esta prueba")
+
+                BufferedOutputStream(outputFile.outputStream(), 128 * 1024).use { out ->
+                    writeWavHeader(out, click.sampleRate, dataBytes.toInt())
+
+                    val framesPerBlock = 2048
+                    val block = ByteArray(framesPerBlock * 4)
+                    var writtenFrames = 0L
+
+                    while (writtenFrames < totalFrames) {
+                        val count = minOf(framesPerBlock.toLong(), totalFrames - writtenFrames).toInt()
+                        var p = 0
+                        repeat(count) {
+                            val left = click.readMonoSample().toInt()
+                            val right = stem.readMonoSample().toInt()
+                            block[p++] = (left and 0xff).toByte()
+                            block[p++] = ((left ushr 8) and 0xff).toByte()
+                            block[p++] = (right and 0xff).toByte()
+                            block[p++] = ((right ushr 8) and 0xff).toByte()
+                        }
+                        out.write(block, 0, count * 4)
+                        writtenFrames += count
+                    }
+                }
+            }
+        }
+    }
+
+    private fun parsePcm16Wav(input: BufferedInputStream): WavReader {
+        if (readFourCc(input) != "RIFF") error("El archivo no es WAV RIFF")
+        readLeInt(input)
+        if (readFourCc(input) != "WAVE") error("Formato WAV no válido")
+
+        var audioFormat = -1
+        var channels = -1
+        var sampleRate = -1
+        var bitsPerSample = -1
+
+        while (true) {
+            val chunkId = readFourCc(input)
+            val chunkSize = readLeInt(input)
+            if (chunkSize < 0) error("Chunk WAV inválido")
+
+            when (chunkId) {
+                "fmt " -> {
+                    if (chunkSize < 16) error("Chunk fmt inválido")
+                    audioFormat = readLeShort(input)
+                    channels = readLeShort(input)
+                    sampleRate = readLeInt(input)
+                    readLeInt(input)
+                    readLeShort(input)
+                    bitsPerSample = readLeShort(input)
+                    skipFully(input, chunkSize - 16)
+                    if ((chunkSize and 1) == 1) skipFully(input, 1)
+                }
+                "data" -> {
+                    if (audioFormat != 1) error("Solo WAV PCM sin compresión")
+                    if (bitsPerSample != 16) error("Solo WAV PCM de 16 bits")
+                    if (channels < 1) error("Número de canales inválido")
+                    if (sampleRate <= 0) error("Sample rate inválido")
+                    val bytesPerFrame = channels * 2
+                    val frames = chunkSize.toLong() / bytesPerFrame
+                    return WavReader(input, sampleRate, channels, frames)
+                }
+                else -> {
+                    skipFully(input, chunkSize)
+                    if ((chunkSize and 1) == 1) skipFully(input, 1)
+                }
+            }
+        }
+    }
+
+    private fun writeWavHeader(out: OutputStream, sampleRate: Int, dataSize: Int) {
+        out.write("RIFF".toByteArray(Charsets.US_ASCII))
+        writeLeInt(out, 36 + dataSize)
+        out.write("WAVE".toByteArray(Charsets.US_ASCII))
+        out.write("fmt ".toByteArray(Charsets.US_ASCII))
+        writeLeInt(out, 16)
+        writeLeShort(out, 1)
+        writeLeShort(out, 2)
+        writeLeInt(out, sampleRate)
+        writeLeInt(out, sampleRate * 4)
+        writeLeShort(out, 4)
+        writeLeShort(out, 16)
+        out.write("data".toByteArray(Charsets.US_ASCII))
+        writeLeInt(out, dataSize)
+    }
+
+    private fun readFourCc(input: InputStream): String {
+        val bytes = ByteArray(4)
+        readFully(input, bytes, 0, 4)
+        return String(bytes, Charsets.US_ASCII)
+    }
+
+    private fun readLeInt(input: InputStream): Int {
+        val b0 = input.read()
+        val b1 = input.read()
+        val b2 = input.read()
+        val b3 = input.read()
+        if (b3 < 0) throw EOFException()
+        return b0 or (b1 shl 8) or (b2 shl 16) or (b3 shl 24)
+    }
+
+    private fun readLeShort(input: InputStream): Int {
+        val b0 = input.read()
+        val b1 = input.read()
+        if (b1 < 0) throw EOFException()
+        return b0 or (b1 shl 8)
+    }
+
+    private fun writeLeInt(out: OutputStream, value: Int) {
+        out.write(value and 0xff)
+        out.write((value ushr 8) and 0xff)
+        out.write((value ushr 16) and 0xff)
+        out.write((value ushr 24) and 0xff)
+    }
+
+    private fun writeLeShort(out: OutputStream, value: Int) {
+        out.write(value and 0xff)
+        out.write((value ushr 8) and 0xff)
+    }
+
+    private fun skipFully(input: InputStream, bytes: Int) {
+        var remaining = bytes
+        while (remaining > 0) {
+            val skipped = input.skip(remaining.toLong()).toInt()
+            if (skipped > 0) {
+                remaining -= skipped
+            } else {
+                if (input.read() < 0) throw EOFException()
+                remaining--
+            }
+        }
+    }
+
+    private fun readFully(input: InputStream, buffer: ByteArray, offset: Int, length: Int) {
+        var total = 0
+        while (total < length) {
+            val read = input.read(buffer, offset + total, length - total)
+            if (read < 0) throw EOFException()
+            total += read
+        }
     }
 
     private fun getDisplayName(uri: Uri): String? {
@@ -379,16 +576,15 @@ class MainActivity : Activity() {
         return "%d:%02d".format(minutes, seconds)
     }
 
-    private fun releasePlayers() {
-        handler.removeCallbacks(progressUpdater)
-        clickPlayer?.release()
-        stemPlayer?.release()
-        clickPlayer = null
-        stemPlayer = null
+    private fun releasePlayer() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+        mixReady = false
     }
 
     override fun onDestroy() {
-        releasePlayers()
+        handler.removeCallbacks(progressUpdater)
+        releasePlayer()
         super.onDestroy()
     }
 }
