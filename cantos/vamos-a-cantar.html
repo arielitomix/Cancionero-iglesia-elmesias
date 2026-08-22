@@ -122,7 +122,6 @@
         }
 
         @media (max-width: 700px) {
-
             main {
                 margin-top: 15px;
                 padding: 0 8px;
@@ -177,9 +176,7 @@
                 Tonalidad:
             </span>
 
-            <button id="bajar">
-                −½
-            </button>
+            <button id="bajar">−½</button>
 
             <select id="tono">
                 <option value="0">E♭</option>
@@ -196,9 +193,7 @@
                 <option value="11">D</option>
             </select>
 
-            <button id="subir">
-                +½
-            </button>
+            <button id="subir">+½</button>
 
         </div>
 
@@ -221,386 +216,426 @@
 
 <script>
 
-document.addEventListener(
-    "DOMContentLoaded",
-    function () {
+document.addEventListener("DOMContentLoaded", function () {
 
-        verovio.module.onRuntimeInitialized =
-        async function () {
+    verovio.module.onRuntimeInitialized =
+    async function () {
 
-            const toolkit =
-                new verovio.toolkit();
+        const toolkit = new verovio.toolkit();
 
-            const respuesta =
-                await fetch(
-                    "Vamos a Cantar Chart.mxl"
+        const respuesta =
+            await fetch("Vamos a Cantar Chart.mxl");
+
+        const datos =
+            await respuesta.arrayBuffer();
+
+        const selector =
+            document.getElementById("tono");
+
+        let temporizadorResize;
+
+
+        function esCelular() {
+            return window.innerWidth <= 700;
+        }
+
+
+        function obtenerAnchoPartitura() {
+
+            if (esCelular()) {
+                return 1350;
+            }
+
+            return 2100;
+        }
+
+
+        /*
+        Divide una frase aproximadamente
+        por la mitad, buscando un espacio.
+        */
+
+        function dividirFrase(texto) {
+
+            const palabras =
+                texto.trim().split(/\s+/);
+
+            if (palabras.length < 5) {
+                return [texto];
+            }
+
+            const mitad =
+                Math.ceil(palabras.length / 2);
+
+            const linea1 =
+                palabras
+                    .slice(0, mitad)
+                    .join(" ");
+
+            const linea2 =
+                palabras
+                    .slice(mitad)
+                    .join(" ");
+
+            return [linea1, linea2];
+        }
+
+
+        /*
+        En móvil buscamos textos largos
+        dentro del SVG de Verovio.
+
+        Si una frase es demasiado ancha,
+        la convertimos en dos líneas.
+        */
+
+        function ajustarLetrasMovil() {
+
+            if (!esCelular()) {
+                return;
+            }
+
+            const svg =
+                document.querySelector(
+                    "#partitura svg"
                 );
 
-            const datos =
-                await respuesta.arrayBuffer();
-
-            const selector =
-                document.getElementById("tono");
-
-            let temporizadorResize;
-
-
-            function esCelular() {
-                return window.innerWidth <= 700;
+            if (!svg) {
+                return;
             }
 
+            const viewBox =
+                svg.viewBox.baseVal;
 
-            function obtenerAnchoPartitura() {
+            const limiteDerecho =
+                viewBox.x +
+                viewBox.width -
+                45;
 
-                if (esCelular()) {
-                    return 1350;
-                }
 
-                return 2100;
-            }
+            const textos =
+                Array.from(
+                    svg.querySelectorAll("text")
+                );
 
 
-            /*
-            Ajusta solamente las frases largas
-            del chart cuando estamos en celular.
-            */
+            textos.forEach(function (elemento) {
 
-            function ajustarLetrasMovil() {
-
-                if (!esCelular()) {
-                    return;
-                }
-
-                const svg =
-                    document.querySelector(
-                        "#partitura svg"
-                    );
-
-                if (!svg) {
-                    return;
-                }
-
-
-                const frasesLetra = [
-
-                    "Vamos a cantar",
-
-                    "Alegres porque",
-
-                    "Amamos todo de ti",
-
-                    "Tú eres quien nos liberta",
-
-                    "Tú eres por quien"
-
-                ];
-
-
-                const viewBox =
-                    svg.viewBox.baseVal;
-
-                const limiteDerecho =
-                    viewBox.x +
-                    viewBox.width -
-                    35;
-
-
-                const textos =
-                    svg.querySelectorAll("text");
-
-
-                textos.forEach(function (elemento) {
-
-                    const texto =
-                        elemento.textContent
-                            .trim();
-
-
-                    const esLetra =
-                        frasesLetra.some(
-                            function (frase) {
-
-                                return texto
-                                    .startsWith(frase);
-
-                            }
-                        );
-
-
-                    if (!esLetra) {
-                        return;
-                    }
-
-
-                    /*
-                    Quitamos cualquier ajuste viejo
-                    antes de calcular.
-                    */
-
-                    elemento.removeAttribute(
-                        "textLength"
-                    );
-
-                    elemento.removeAttribute(
-                        "lengthAdjust"
-                    );
-
-
-                    let caja;
-
-                    try {
-
-                        caja =
-                            elemento.getBBox();
-
-                    } catch (error) {
-
-                        return;
-                    }
-
-
-                    const finalTexto =
-                        caja.x +
-                        caja.width;
-
-
-                    /*
-                    Si la frase sale del borde
-                    de la página, la ajustamos
-                    horizontalmente.
-                    */
-
-                    if (
-                        finalTexto >
-                        limiteDerecho
-                    ) {
-
-                        const espacioDisponible =
-                            limiteDerecho -
-                            caja.x;
-
-
-                        if (
-                            espacioDisponible >
-                            100
-                        ) {
-
-                            elemento.setAttribute(
-                                "textLength",
-                                espacioDisponible
-                            );
-
-                            elemento.setAttribute(
-                                "lengthAdjust",
-                                "spacingAndGlyphs"
-                            );
-
-                        }
-
-                    }
-
-                });
-
-            }
-
-
-            function cargarYTransponer() {
-
-                const semitonos =
-                    Number(
-                        selector.value
-                    );
-
-                const movil =
-                    esCelular();
-
-
-                toolkit.setOptions({
-
-                    transpose:
-                        semitonos === 0
-                        ? ""
-                        : String(semitonos),
-
-                    breaks:
-                        movil
-                        ? "auto"
-                        : "encoded",
-
-                    pageWidth:
-                        obtenerAnchoPartitura(),
-
-                    pageHeight:
-                        60000,
-
-                    adjustPageHeight:
-                        true,
-
-                    scale:
-                        movil
-                        ? 48
-                        : 45,
-
-                    header:
-                        "none",
-
-                    footer:
-                        "none",
-
-                    pageMarginTop:
-                        40,
-
-                    pageMarginBottom:
-                        40,
-
-                    pageMarginLeft:
-                        movil
-                        ? 25
-                        : 40,
-
-                    pageMarginRight:
-                        movil
-                        ? 25
-                        : 40,
-
-                    minLastJustification:
-                        0
-
-                });
-
-
-                const cargado =
-                    toolkit.loadZipDataBuffer(
-                        datos
-                    );
-
-
-                if (!cargado) {
-
-                    document
-                        .getElementById(
-                            "estado"
-                        )
-                        .innerHTML =
-                        "No se pudo cargar el chart.";
-
-                    return;
-                }
-
-
-                document
-                    .getElementById(
-                        "estado"
-                    )
-                    .style.display =
-                    "none";
-
-
-                const svg =
-                    toolkit.renderToSVG(1);
-
-
-                document
-                    .getElementById(
-                        "partitura"
-                    )
-                    .innerHTML =
-                    svg;
+                const texto =
+                    elemento.textContent
+                        .trim();
 
 
                 /*
-                Después de dibujar el SVG,
-                corregimos únicamente la letra
-                larga en celular.
+                Ignoramos acordes, números,
+                tempo y textos cortos.
                 */
 
-                requestAnimationFrame(
-                    ajustarLetrasMovil
+                if (texto.length < 25) {
+                    return;
+                }
+
+
+                let caja;
+
+                try {
+                    caja = elemento.getBBox();
+                } catch (error) {
+                    return;
+                }
+
+
+                const seSale =
+                    caja.x + caja.width >
+                    limiteDerecho;
+
+
+                if (!seSale) {
+                    return;
+                }
+
+
+                const lineas =
+                    dividirFrase(texto);
+
+
+                if (lineas.length !== 2) {
+                    return;
+                }
+
+
+                /*
+                Conservamos la posición original.
+                */
+
+                const xOriginal =
+                    elemento.getAttribute("x");
+
+                const yOriginal =
+                    elemento.getAttribute("y");
+
+
+                /*
+                Si Verovio no puso x/y directamente
+                en el elemento, usamos la caja.
+                */
+
+                const x =
+                    xOriginal !== null
+                    ? xOriginal
+                    : caja.x;
+
+                const y =
+                    yOriginal !== null
+                    ? yOriginal
+                    : caja.y + caja.height;
+
+
+                /*
+                Quitamos el contenido original.
+                */
+
+                while (elemento.firstChild) {
+                    elemento.removeChild(
+                        elemento.firstChild
+                    );
+                }
+
+
+                /*
+                Primera línea.
+                */
+
+                const tspan1 =
+                    document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "tspan"
+                    );
+
+                tspan1.setAttribute("x", x);
+                tspan1.setAttribute("y", y);
+                tspan1.textContent =
+                    lineas[0];
+
+
+                /*
+                Segunda línea.
+                */
+
+                const tspan2 =
+                    document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "tspan"
+                    );
+
+                tspan2.setAttribute("x", x);
+
+                tspan2.setAttribute(
+                    "dy",
+                    "1.25em"
                 );
 
+                tspan2.textContent =
+                    lineas[1];
+
+
+                elemento.appendChild(tspan1);
+                elemento.appendChild(tspan2);
+
+            });
+
+        }
+
+
+        function cargarYTransponer() {
+
+            const semitonos =
+                Number(selector.value);
+
+            const movil =
+                esCelular();
+
+
+            toolkit.setOptions({
+
+                transpose:
+                    semitonos === 0
+                    ? ""
+                    : String(semitonos),
+
+                breaks:
+                    movil
+                    ? "auto"
+                    : "encoded",
+
+                pageWidth:
+                    obtenerAnchoPartitura(),
+
+                pageHeight:
+                    60000,
+
+                adjustPageHeight:
+                    true,
+
+                scale:
+                    movil
+                    ? 48
+                    : 45,
+
+                header:
+                    "none",
+
+                footer:
+                    "none",
+
+                pageMarginTop:
+                    40,
+
+                pageMarginBottom:
+                    40,
+
+                pageMarginLeft:
+                    movil
+                    ? 25
+                    : 40,
+
+                pageMarginRight:
+                    movil
+                    ? 25
+                    : 40,
+
+                minLastJustification:
+                    0
+
+            });
+
+
+            const cargado =
+                toolkit.loadZipDataBuffer(
+                    datos
+                );
+
+
+            if (!cargado) {
+
+                document
+                    .getElementById("estado")
+                    .innerHTML =
+                    "No se pudo cargar el chart.";
+
+                return;
             }
 
 
-            cargarYTransponer();
+            document
+                .getElementById("estado")
+                .style.display =
+                "none";
+
+
+            const svg =
+                toolkit.renderToSVG(1);
 
 
             document
-                .getElementById(
-                    "subir"
-                )
-                .addEventListener(
-                    "click",
-                    function () {
-
-                        let valor =
-                            Number(
-                                selector.value
-                            );
-
-                        valor =
-                            (valor + 1) % 12;
-
-                        selector.value =
-                            valor;
-
-                        cargarYTransponer();
-
-                    }
-                );
+                .getElementById("partitura")
+                .innerHTML =
+                svg;
 
 
-            document
-                .getElementById(
-                    "bajar"
-                )
-                .addEventListener(
-                    "click",
-                    function () {
+            /*
+            Esperamos a que el SVG exista
+            y después ajustamos las frases.
+            */
 
-                        let valor =
-                            Number(
-                                selector.value
-                            );
-
-                        valor =
-                            (valor + 11) % 12;
-
-                        selector.value =
-                            valor;
-
-                        cargarYTransponer();
-
-                    }
-                );
-
-
-            selector.addEventListener(
-                "change",
-                cargarYTransponer
-            );
-
-
-            window.addEventListener(
-                "resize",
+            requestAnimationFrame(
                 function () {
 
-                    clearTimeout(
-                        temporizadorResize
+                    requestAnimationFrame(
+                        ajustarLetrasMovil
                     );
-
-                    temporizadorResize =
-                        setTimeout(
-                            cargarYTransponer,
-                            250
-                        );
 
                 }
             );
 
-        };
+        }
 
-    }
-);
+
+        cargarYTransponer();
+
+
+        document
+            .getElementById("subir")
+            .addEventListener(
+                "click",
+                function () {
+
+                    let valor =
+                        Number(
+                            selector.value
+                        );
+
+                    valor =
+                        (valor + 1) % 12;
+
+                    selector.value =
+                        valor;
+
+                    cargarYTransponer();
+
+                }
+            );
+
+
+        document
+            .getElementById("bajar")
+            .addEventListener(
+                "click",
+                function () {
+
+                    let valor =
+                        Number(
+                            selector.value
+                        );
+
+                    valor =
+                        (valor + 11) % 12;
+
+                    selector.value =
+                        valor;
+
+                    cargarYTransponer();
+
+                }
+            );
+
+
+        selector.addEventListener(
+            "change",
+            cargarYTransponer
+        );
+
+
+        window.addEventListener(
+            "resize",
+            function () {
+
+                clearTimeout(
+                    temporizadorResize
+                );
+
+                temporizadorResize =
+                    setTimeout(
+                        cargarYTransponer,
+                        250
+                    );
+
+            }
+        );
+
+    };
+
+});
 
 </script>
 
