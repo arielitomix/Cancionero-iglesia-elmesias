@@ -37,13 +37,13 @@
 </head>
 <body>
   <main class="wrap">
-    <div class="eyebrow">Prototype 0.2</div>
+    <div class="eyebrow">Prototype 0.3</div>
     <h1>Sequence Player</h1>
     <div class="sub">Prueba real de reproducción local en Android</div>
 
     <section class="card">
-      <label class="pick" for="audioFile">＋ Elegir archivo de audio</label>
-      <input id="audioFile" type="file">
+      <label class="pick" for="audioFile">＋ Buscar WAV / MP3 en Archivos</label>
+      <input id="audioFile" type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac,application/octet-stream">
       <div id="fileName" class="filename">Ningún archivo cargado</div>
 
       <div id="trackTitle" class="track-title">Sin audio</div>
@@ -62,11 +62,11 @@
         <button id="loopBtn" type="button" aria-pressed="false" disabled>↻ LOOP</button>
       </div>
 
-      <div id="status" class="status" aria-live="polite">Listo. Elige un archivo de audio.</div>
+      <div id="status" class="status" aria-live="polite">Listo. Busca un archivo de audio.</div>
     </section>
 
     <section class="card">
-      <p class="hint"><strong>En Android ahora abrimos el explorador de archivos normal.</strong> La app comprueba después si el archivo seleccionado es un formato de audio compatible.</p>
+      <p class="hint"><strong>Versión 0.3:</strong> el selector ahora pide extensiones de archivo concretas en vez de contenido multimedia genérico, para favorecer el explorador de documentos de Android.</p>
     </section>
 
     <audio id="audio" preload="metadata"></audio>
