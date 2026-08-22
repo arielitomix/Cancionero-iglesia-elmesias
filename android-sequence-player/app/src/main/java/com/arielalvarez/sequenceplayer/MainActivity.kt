@@ -16,42 +16,64 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import kotlin.math.abs
 
 class MainActivity : Activity() {
 
     companion object {
-        private const val PICK_AUDIO = 1001
+        private const val PICK_CLICK = 1001
+        private const val PICK_STEM = 1002
+        private const val SYNC_TOLERANCE_MS = 45
     }
 
-    private var mediaPlayer: MediaPlayer? = null
-    private var selectedUri: Uri? = null
+    private var clickPlayer: MediaPlayer? = null
+    private var stemPlayer: MediaPlayer? = null
+    private var clickPrepared = false
+    private var stemPrepared = false
+    private var loopEnabled = false
+
     private val handler = Handler(Looper.getMainLooper())
 
-    private lateinit var fileNameView: TextView
+    private lateinit var clickNameView: TextView
+    private lateinit var stemNameView: TextView
     private lateinit var currentTimeView: TextView
     private lateinit var durationView: TextView
     private lateinit var seekBar: SeekBar
     private lateinit var playButton: Button
     private lateinit var stopButton: Button
     private lateinit var loopButton: Button
+    private lateinit var statusView: TextView
 
     private val progressUpdater = object : Runnable {
         override fun run() {
-            val player = mediaPlayer
-            if (player != null) {
-                currentTimeView.text = formatTime(player.currentPosition)
-                if (!seekBar.isPressed && player.duration > 0) {
-                    seekBar.progress = player.currentPosition
+            val click = clickPlayer
+            val stem = stemPlayer
+            val reference = stem ?: click
+
+            if (reference != null) {
+                val position = reference.currentPosition
+                currentTimeView.text = formatTime(position)
+                if (!seekBar.isPressed && reference.duration > 0) {
+                    seekBar.progress = position.coerceAtMost(seekBar.max)
                 }
-                handler.postDelayed(this, 250)
+
+                if (click != null && stem != null && click.isPlaying && stem.isPlaying) {
+                    val drift = click.currentPosition - stem.currentPosition
+                    if (abs(drift) > SYNC_TOLERANCE_MS) {
+                        click.seekTo(stem.currentPosition)
+                    }
+                }
             }
+
+            handler.postDelayed(this, 250)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildUi())
-        setControlsEnabled(false)
+        updateControls()
+        handler.post(progressUpdater)
     }
 
     private fun buildUi(): LinearLayout {
@@ -82,29 +104,47 @@ class MainActivity : Activity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "Prototipo nativo 0.1 · selector real de documentos"
+            text = "Prototipo nativo 0.2 · dos stems sincronizados"
             setTextColor(Color.rgb(145, 160, 178))
             textSize = 14f
-            setPadding(0, 0, 0, dp(22))
+            setPadding(0, 0, 0, dp(18))
         })
 
-        val pickButton = Button(this).apply {
-            text = "+ ELEGIR ARCHIVO DE AUDIO"
-            textSize = 16f
-            setOnClickListener { openDocumentPicker() }
+        val clickButton = Button(this).apply {
+            text = "+ ELEGIR CLICK"
+            textSize = 15f
+            setOnClickListener { openDocumentPicker(PICK_CLICK) }
         }
-        root.addView(pickButton, LinearLayout.LayoutParams(
+        root.addView(clickButton, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(58)
+            dp(54)
         ))
 
-        fileNameView = TextView(this).apply {
-            text = "Ningún archivo cargado"
+        clickNameView = TextView(this).apply {
+            text = "Click: ninguno"
             setTextColor(Color.rgb(190, 199, 210))
-            textSize = 15f
-            setPadding(0, dp(16), 0, dp(24))
+            textSize = 14f
+            setPadding(0, dp(10), 0, dp(12))
         }
-        root.addView(fileNameView)
+        root.addView(clickNameView)
+
+        val stemButton = Button(this).apply {
+            text = "+ ELEGIR STEM / INSTRUMENTO"
+            textSize = 15f
+            setOnClickListener { openDocumentPicker(PICK_STEM) }
+        }
+        root.addView(stemButton, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(54)
+        ))
+
+        stemNameView = TextView(this).apply {
+            text = "Stem: ninguno"
+            setTextColor(Color.rgb(190, 199, 210))
+            textSize = 14f
+            setPadding(0, dp(10), 0, dp(18))
+        }
+        root.addView(stemNameView)
 
         val timeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -114,7 +154,7 @@ class MainActivity : Activity() {
         currentTimeView = TextView(this).apply {
             text = "0:00"
             setTextColor(Color.WHITE)
-            textSize = 42f
+            textSize = 40f
         }
         durationView = TextView(this).apply {
             text = "0:00"
@@ -134,9 +174,13 @@ class MainActivity : Activity() {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     if (fromUser) currentTimeView.text = formatTime(progress)
                 }
+
                 override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    mediaPlayer?.seekTo(seekBar?.progress ?: 0)
+                    val position = seekBar?.progress ?: 0
+                    clickPlayer?.seekTo(position)
+                    stemPlayer?.seekTo(position)
                 }
             })
         }
@@ -161,10 +205,10 @@ class MainActivity : Activity() {
         loopButton = Button(this).apply {
             text = "↻ LOOP"
             setOnClickListener {
-                mediaPlayer?.let {
-                    it.isLooping = !it.isLooping
-                    text = if (it.isLooping) "↻ LOOP ✓" else "↻ LOOP"
-                }
+                loopEnabled = !loopEnabled
+                clickPlayer?.isLooping = loopEnabled
+                stemPlayer?.isLooping = loopEnabled
+                text = if (loopEnabled) "↻ LOOP ✓" else "↻ LOOP"
             }
         }
 
@@ -176,17 +220,18 @@ class MainActivity : Activity() {
         controls.addView(loopButton, LinearLayout.LayoutParams(0, dp(60), 1f))
         root.addView(controls)
 
-        root.addView(TextView(this).apply {
-            text = "Esta versión usa el selector de documentos de Android, no el selector de fotos/video del navegador."
+        statusView = TextView(this).apply {
+            text = "Carga Click + Stem para probar sincronía."
             setTextColor(Color.rgb(145, 160, 178))
             textSize = 13f
-            setPadding(0, dp(24), 0, 0)
-        })
+            setPadding(0, dp(20), 0, 0)
+        }
+        root.addView(statusView)
 
         return root
     }
 
-    private fun openDocumentPicker() {
+    private fun openDocumentPicker(requestCode: Int) {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "audio/*"
@@ -200,16 +245,16 @@ class MainActivity : Activity() {
                 "audio/flac"
             ))
         }
-        startActivityForResult(intent, PICK_AUDIO)
+        startActivityForResult(intent, requestCode)
     }
 
     @Deprecated("Deprecated in Android API, kept for this dependency-free prototype")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != PICK_AUDIO || resultCode != RESULT_OK) return
+        if (resultCode != RESULT_OK) return
+        if (requestCode != PICK_CLICK && requestCode != PICK_STEM) return
 
         val uri = data?.data ?: return
-        selectedUri = uri
 
         try {
             contentResolver.takePersistableUriPermission(
@@ -217,67 +262,106 @@ class MainActivity : Activity() {
                 data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             )
         } catch (_: SecurityException) {
-            // Some providers do not offer persistable permission; playback still works for this session.
         }
 
-        fileNameView.text = getDisplayName(uri) ?: "Archivo de audio"
-        loadAudio(uri)
+        val name = getDisplayName(uri) ?: "Archivo de audio"
+        if (requestCode == PICK_CLICK) {
+            clickNameView.text = "Click: $name"
+            loadPlayer(uri, true)
+        } else {
+            stemNameView.text = "Stem: $name"
+            loadPlayer(uri, false)
+        }
     }
 
-    private fun loadAudio(uri: Uri) {
-        releasePlayer()
-        setControlsEnabled(false)
+    private fun loadPlayer(uri: Uri, isClick: Boolean) {
+        if (isClick) {
+            clickPlayer?.release()
+            clickPlayer = null
+            clickPrepared = false
+        } else {
+            stemPlayer?.release()
+            stemPlayer = null
+            stemPrepared = false
+        }
+        updateControls()
+        statusView.text = "Preparando audio…"
 
-        mediaPlayer = MediaPlayer().apply {
+        val player = MediaPlayer().apply {
             setDataSource(this@MainActivity, uri)
-            setOnPreparedListener { player ->
-                seekBar.max = player.duration.coerceAtLeast(1)
-                durationView.text = formatTime(player.duration)
-                currentTimeView.text = "0:00"
-                setControlsEnabled(true)
-                handler.post(progressUpdater)
-                Toast.makeText(this@MainActivity, "Audio listo", Toast.LENGTH_SHORT).show()
+            isLooping = loopEnabled
+            setOnPreparedListener { prepared ->
+                if (isClick) clickPrepared = true else stemPrepared = true
+                val maxDuration = listOfNotNull(
+                    clickPlayer?.takeIf { clickPrepared }?.duration,
+                    stemPlayer?.takeIf { stemPrepared }?.duration
+                ).maxOrNull() ?: prepared.duration
+                seekBar.max = maxDuration.coerceAtLeast(1)
+                durationView.text = formatTime(maxDuration)
+                updateControls()
+                statusView.text = if (clickPrepared && stemPrepared) {
+                    "Click + Stem listos. Dale PLAY."
+                } else {
+                    "Un archivo listo. Falta cargar el otro."
+                }
             }
             setOnCompletionListener {
-                if (!it.isLooping) {
+                if (!loopEnabled && !isAnyPlaying()) {
                     playButton.text = "▶ PLAY"
-                    currentTimeView.text = formatTime(it.duration)
                 }
             }
             setOnErrorListener { _, _, _ ->
                 Toast.makeText(this@MainActivity, "No se pudo reproducir este archivo", Toast.LENGTH_LONG).show()
-                setControlsEnabled(false)
+                if (isClick) clickPrepared = false else stemPrepared = false
+                updateControls()
                 true
             }
             prepareAsync()
         }
+
+        if (isClick) clickPlayer = player else stemPlayer = player
     }
 
     private fun togglePlayback() {
-        val player = mediaPlayer ?: return
-        if (player.isPlaying) {
-            player.pause()
+        if (!clickPrepared || !stemPrepared) return
+
+        if (isAnyPlaying()) {
+            clickPlayer?.pause()
+            stemPlayer?.pause()
             playButton.text = "▶ PLAY"
+            statusView.text = "Pausado."
         } else {
-            player.start()
+            val position = maxOf(clickPlayer?.currentPosition ?: 0, stemPlayer?.currentPosition ?: 0)
+            clickPlayer?.seekTo(position)
+            stemPlayer?.seekTo(position)
+            stemPlayer?.start()
+            clickPlayer?.start()
             playButton.text = "❚❚ PAUSA"
+            statusView.text = "Reproduciendo Click + Stem sincronizados."
         }
     }
 
     private fun stopPlayback() {
-        val player = mediaPlayer ?: return
-        if (player.isPlaying) player.pause()
-        player.seekTo(0)
+        clickPlayer?.pause()
+        stemPlayer?.pause()
+        clickPlayer?.seekTo(0)
+        stemPlayer?.seekTo(0)
         seekBar.progress = 0
         currentTimeView.text = "0:00"
         playButton.text = "▶ PLAY"
+        statusView.text = "Detenido."
     }
 
-    private fun setControlsEnabled(enabled: Boolean) {
-        playButton.isEnabled = enabled
-        stopButton.isEnabled = enabled
-        loopButton.isEnabled = enabled
-        seekBar.isEnabled = enabled
+    private fun isAnyPlaying(): Boolean {
+        return clickPlayer?.isPlaying == true || stemPlayer?.isPlaying == true
+    }
+
+    private fun updateControls() {
+        val ready = clickPrepared && stemPrepared
+        playButton.isEnabled = ready
+        stopButton.isEnabled = ready
+        loopButton.isEnabled = ready
+        seekBar.isEnabled = ready
     }
 
     private fun getDisplayName(uri: Uri): String? {
@@ -295,14 +379,16 @@ class MainActivity : Activity() {
         return "%d:%02d".format(minutes, seconds)
     }
 
-    private fun releasePlayer() {
+    private fun releasePlayers() {
         handler.removeCallbacks(progressUpdater)
-        mediaPlayer?.release()
-        mediaPlayer = null
+        clickPlayer?.release()
+        stemPlayer?.release()
+        clickPlayer = null
+        stemPlayer = null
     }
 
     override fun onDestroy() {
-        releasePlayer()
+        releasePlayers()
         super.onDestroy()
     }
 }
