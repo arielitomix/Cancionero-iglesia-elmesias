@@ -37,17 +37,17 @@
 </head>
 <body>
   <main class="wrap">
-    <div class="eyebrow">Prototype 0.1</div>
+    <div class="eyebrow">Prototype 0.2</div>
     <h1>Sequence Player</h1>
     <div class="sub">Prueba real de reproducción local en Android</div>
 
     <section class="card">
-      <label class="pick" for="audioFile">＋ Cargar WAV / MP3</label>
-      <input id="audioFile" type="file" accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.flac">
+      <label class="pick" for="audioFile">＋ Elegir archivo de audio</label>
+      <input id="audioFile" type="file">
       <div id="fileName" class="filename">Ningún archivo cargado</div>
 
       <div id="trackTitle" class="track-title">Sin audio</div>
-      <div id="trackMeta" class="meta">Selecciona un stem para comenzar</div>
+      <div id="trackMeta" class="meta">Selecciona un WAV, MP3, M4A, AAC, OGG o FLAC</div>
 
       <div class="time-row">
         <div id="currentTime" class="time">0:00</div>
@@ -62,11 +62,11 @@
         <button id="loopBtn" type="button" aria-pressed="false" disabled>↻ LOOP</button>
       </div>
 
-      <div id="status" class="status" aria-live="polite">Listo. Carga un archivo de audio.</div>
+      <div id="status" class="status" aria-live="polite">Listo. Elige un archivo de audio.</div>
     </section>
 
     <section class="card">
-      <p class="hint"><strong>Esta prueba es intencionalmente simple.</strong> Primero queremos comprobar que tu celular puede abrir un archivo local, reproducirlo, pausarlo, detenerlo, mover la posición y hacer loop. Después de eso metemos dos stems sincronizados.</p>
+      <p class="hint"><strong>En Android ahora abrimos el explorador de archivos normal.</strong> La app comprueba después si el archivo seleccionado es un formato de audio compatible.</p>
     </section>
 
     <audio id="audio" preload="metadata"></audio>
@@ -88,6 +88,7 @@
 
     let objectUrl = null;
     let seeking = false;
+    const validExtensions = ['wav','mp3','m4a','aac','ogg','flac'];
 
     function fmt(seconds){
       if(!Number.isFinite(seconds) || seconds < 0) seconds = 0;
@@ -111,6 +112,15 @@
       const file = fileInput.files && fileInput.files[0];
       if(!file) return;
 
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const looksLikeAudio = (file.type && file.type.startsWith('audio/')) || validExtensions.includes(ext);
+      if(!looksLikeAudio){
+        fileInput.value = '';
+        setEnabled(false);
+        setStatus('Ese archivo no parece ser audio. Elige WAV, MP3, M4A, AAC, OGG o FLAC.', 'warn');
+        return;
+      }
+
       audio.pause();
       if(objectUrl) URL.revokeObjectURL(objectUrl);
       objectUrl = URL.createObjectURL(file);
@@ -119,7 +129,7 @@
 
       fileName.textContent = file.name;
       trackTitle.textContent = file.name.replace(/\.[^.]+$/, '');
-      trackMeta.textContent = `${(file.size / (1024*1024)).toFixed(1)} MB · ${file.type || 'audio'}`;
+      trackMeta.textContent = `${(file.size / (1024*1024)).toFixed(1)} MB · ${file.type || ext.toUpperCase()}`;
       seek.value = 0;
       currentTimeEl.textContent = '0:00';
       durationEl.textContent = '0:00';
@@ -161,7 +171,7 @@
     });
 
     audio.addEventListener('error', () => {
-      setStatus('Este archivo no pudo reproducirse. Prueba otro WAV o MP3.', 'warn');
+      setStatus('Este archivo no pudo reproducirse en este navegador.', 'warn');
     });
 
     playBtn.addEventListener('click', async () => {
