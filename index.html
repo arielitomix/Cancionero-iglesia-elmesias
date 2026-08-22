@@ -3,13 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cancionero de la Iglesia</title>
+
+    <title>Cancionero El Mesías</title>
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
             margin: 0;
-            background: #f5f5f5;
+            font-family: Arial, sans-serif;
+            background: #f4f4f4;
             color: #222;
         }
 
@@ -17,55 +22,78 @@
             background: #222;
             color: white;
             text-align: center;
-            padding: 30px 20px;
+            padding: 35px 20px;
         }
 
         header h1 {
             margin: 0;
-            font-size: 28px;
+            font-size: 30px;
         }
 
         header p {
-            margin-bottom: 0;
+            margin: 10px 0 0;
             opacity: 0.8;
         }
 
         main {
-            max-width: 800px;
-            margin: 30px auto;
-            padding: 0 20px;
+            max-width: 900px;
+            margin: auto;
+            padding: 30px 20px;
         }
 
         .buscador {
             width: 100%;
-            box-sizing: border-box;
-            padding: 15px;
-            font-size: 16px;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-            margin-bottom: 25px;
-        }
-
-        .canto {
-            background: white;
-            padding: 25px;
+            padding: 16px;
+            border: none;
             border-radius: 12px;
-            margin-bottom: 20px;
+            font-size: 17px;
+            margin-bottom: 30px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
 
-        .canto h2 {
-            margin-top: 0;
+        .seccion {
+            margin-bottom: 35px;
         }
 
-        .acorde {
-            color: #8b4513;
-            font-weight: bold;
+        .seccion h2 {
+            margin-bottom: 15px;
         }
 
-        .letra {
-            white-space: pre-line;
-            line-height: 1.8;
+        .cantos {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 15px;
+        }
+
+        .canto {
+            display: block;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-decoration: none;
+            color: #222;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s;
+        }
+
+        .canto:hover {
+            transform: translateY(-3px);
+        }
+
+        .canto h3 {
+            margin: 0 0 8px;
+        }
+
+        .canto p {
+            margin: 0;
+            color: #777;
+        }
+
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: #777;
+            font-size: 14px;
         }
     </style>
 </head>
@@ -73,7 +101,7 @@
 <body>
 
 <header>
-    <h1>🎵 Cancionero de la Iglesia</h1>
+    <h1>🎵 Cancionero El Mesías</h1>
     <p>Letra y acordes de nuestros cantos</p>
 </header>
 
@@ -81,24 +109,72 @@
 
     <input
         type="text"
+        id="buscador"
         class="buscador"
         placeholder="🔎 Buscar un canto..."
     >
 
-    <div class="canto">
-        <h2>Ejemplo de canto</h2>
+    <section class="seccion">
+        <h2>🎸 Alabanza</h2>
 
-        <div class="letra">
-<span class="acorde">G</span>              <span class="acorde">D</span>
-Grande es tu fidelidad
+        <div class="cantos">
 
-<span class="acorde">Em</span>             <span class="acorde">C</span>
-Grande es tu amor
+            <a href="#" class="canto">
+                <h3>Grande es tu fidelidad</h3>
+                <p>Alabanza</p>
+            </a>
+
+            <a href="#" class="canto">
+                <h3>Canto de ejemplo</h3>
+                <p>Alabanza</p>
+            </a>
 
         </div>
-    </div>
+    </section>
+
+    <section class="seccion">
+        <h2>🙏 Adoración</h2>
+
+        <div class="cantos">
+
+            <a href="#" class="canto">
+                <h3>Canto de adoración</h3>
+                <p>Adoración</p>
+            </a>
+
+        </div>
+    </section>
 
 </main>
+
+<footer>
+    Cancionero de la Iglesia El Mesías
+</footer>
+
+<script>
+
+    const buscador = document.getElementById("buscador");
+    const cantos = document.querySelectorAll(".canto");
+
+    buscador.addEventListener("input", function() {
+
+        const texto = buscador.value.toLowerCase();
+
+        cantos.forEach(function(canto) {
+
+            const nombre = canto.innerText.toLowerCase();
+
+            if (nombre.includes(texto)) {
+                canto.style.display = "block";
+            } else {
+                canto.style.display = "none";
+            }
+
+        });
+
+    });
+
+</script>
 
 </body>
 </html>
