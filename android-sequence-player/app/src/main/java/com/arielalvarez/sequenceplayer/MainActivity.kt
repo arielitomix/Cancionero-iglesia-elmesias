@@ -28,11 +28,14 @@ class MainActivity : Activity() {
 
     companion object {
         private const val PICK_CLICK = 1001
-        private const val PICK_STEM = 1002
+        private const val PICK_DRUMS = 1002
+        private const val PICK_BASS = 1003
     }
 
     private var clickUri: Uri? = null
-    private var stemUri: Uri? = null
+    private var drumsUri: Uri? = null
+    private var bassUri: Uri? = null
+
     private var mediaPlayer: MediaPlayer? = null
     private var loopEnabled = false
     private var mixReady = false
@@ -41,7 +44,8 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
 
     private lateinit var clickNameView: TextView
-    private lateinit var stemNameView: TextView
+    private lateinit var drumsNameView: TextView
+    private lateinit var bassNameView: TextView
     private lateinit var currentTimeView: TextView
     private lateinit var durationView: TextView
     private lateinit var seekBar: SeekBar
@@ -99,10 +103,10 @@ class MainActivity : Activity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "Prototipo nativo 0.3 · motor WAV de un solo reloj"
+            text = "Prototipo nativo 0.4 · Click + Drums + Bass"
             setTextColor(Color.rgb(145, 160, 178))
             textSize = 14f
-            setPadding(0, 0, 0, dp(18))
+            setPadding(0, 0, 0, dp(16))
         })
 
         val clickButton = Button(this).apply {
@@ -110,36 +114,32 @@ class MainActivity : Activity() {
             textSize = 15f
             setOnClickListener { openDocumentPicker(PICK_CLICK) }
         }
-        root.addView(clickButton, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(54)
-        ))
+        root.addView(clickButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
 
-        clickNameView = TextView(this).apply {
-            text = "Click: ninguno"
-            setTextColor(Color.rgb(190, 199, 210))
-            textSize = 14f
-            setPadding(0, dp(10), 0, dp(12))
-        }
+        clickNameView = createFileLabel("Click: ninguno", dp)
         root.addView(clickNameView)
 
-        val stemButton = Button(this).apply {
-            text = "+ ELEGIR STEM WAV"
+        val drumsButton = Button(this).apply {
+            text = "+ ELEGIR DRUMS WAV"
             textSize = 15f
-            setOnClickListener { openDocumentPicker(PICK_STEM) }
+            setOnClickListener { openDocumentPicker(PICK_DRUMS) }
         }
-        root.addView(stemButton, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(54)
-        ))
+        root.addView(drumsButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
 
-        stemNameView = TextView(this).apply {
-            text = "Stem: ninguno"
-            setTextColor(Color.rgb(190, 199, 210))
-            textSize = 14f
-            setPadding(0, dp(10), 0, dp(18))
+        drumsNameView = createFileLabel("Drums: ninguno", dp)
+        root.addView(drumsNameView)
+
+        val bassButton = Button(this).apply {
+            text = "+ ELEGIR BASS WAV"
+            textSize = 15f
+            setOnClickListener { openDocumentPicker(PICK_BASS) }
         }
-        root.addView(stemNameView)
+        root.addView(bassButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
+
+        bassNameView = createFileLabel("Bass: ninguno", dp).apply {
+            setPadding(0, dp(8), 0, dp(16))
+        }
+        root.addView(bassNameView)
 
         val timeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -149,7 +149,7 @@ class MainActivity : Activity() {
         currentTimeView = TextView(this).apply {
             text = "0:00"
             setTextColor(Color.WHITE)
-            textSize = 40f
+            textSize = 38f
         }
         durationView = TextView(this).apply {
             text = "0:00"
@@ -157,7 +157,6 @@ class MainActivity : Activity() {
             textSize = 20f
             gravity = Gravity.END
         }
-
         timeRow.addView(currentTimeView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         timeRow.addView(durationView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(timeRow)
@@ -169,18 +168,13 @@ class MainActivity : Activity() {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     if (fromUser) currentTimeView.text = formatTime(progress)
                 }
-
                 override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
                     mediaPlayer?.seekTo(seekBar?.progress ?: 0)
                 }
             })
         }
-        root.addView(seekBar, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(52)
-        ))
+        root.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
 
         val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -204,30 +198,37 @@ class MainActivity : Activity() {
             }
         }
 
-        val buttonParams = LinearLayout.LayoutParams(0, dp(60), 1f).apply {
-            marginEnd = dp(6)
-        }
+        val buttonParams = LinearLayout.LayoutParams(0, dp(58), 1f).apply { marginEnd = dp(6) }
         controls.addView(stopButton, buttonParams)
         controls.addView(playButton, buttonParams)
-        controls.addView(loopButton, LinearLayout.LayoutParams(0, dp(60), 1f))
+        controls.addView(loopButton, LinearLayout.LayoutParams(0, dp(58), 1f))
         root.addView(controls)
 
         statusView = TextView(this).apply {
-            text = "Carga dos WAV PCM 16-bit exportados desde el mismo inicio."
+            text = "Carga 3 WAV PCM 16-bit del mismo proyecto e inicio."
             setTextColor(Color.rgb(145, 160, 178))
             textSize = 13f
-            setPadding(0, dp(20), 0, 0)
+            setPadding(0, dp(18), 0, 0)
         }
         root.addView(statusView)
 
         root.addView(TextView(this).apply {
-            text = "Salida de prueba: Click = L · Stem = R. Los dos comparten exactamente el mismo reloj de audio."
+            text = "Prueba 0.4: Click = L · Drums + Bass = R. Los tres comparten el mismo reloj de audio."
             setTextColor(Color.rgb(110, 124, 142))
             textSize = 12f
-            setPadding(0, dp(10), 0, 0)
+            setPadding(0, dp(8), 0, 0)
         })
 
         return root
+    }
+
+    private fun createFileLabel(textValue: String, dp: (Int) -> Int): TextView {
+        return TextView(this).apply {
+            text = textValue
+            setTextColor(Color.rgb(190, 199, 210))
+            textSize = 13f
+            setPadding(0, dp(8), 0, dp(10))
+        }
     }
 
     private fun openDocumentPicker(requestCode: Int) {
@@ -243,10 +244,9 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
-        if (requestCode != PICK_CLICK && requestCode != PICK_STEM) return
+        if (requestCode !in listOf(PICK_CLICK, PICK_DRUMS, PICK_BASS)) return
 
         val uri = data?.data ?: return
-
         try {
             contentResolver.takePersistableUriPermission(
                 uri,
@@ -261,40 +261,48 @@ class MainActivity : Activity() {
             return
         }
 
-        if (requestCode == PICK_CLICK) {
-            clickUri = uri
-            clickNameView.text = "Click: $name"
-        } else {
-            stemUri = uri
-            stemNameView.text = "Stem: $name"
+        when (requestCode) {
+            PICK_CLICK -> {
+                clickUri = uri
+                clickNameView.text = "Click: $name"
+            }
+            PICK_DRUMS -> {
+                drumsUri = uri
+                drumsNameView.text = "Drums: $name"
+            }
+            PICK_BASS -> {
+                bassUri = uri
+                bassNameView.text = "Bass: $name"
+            }
         }
 
         mixReady = false
         releasePlayer()
         updateControls()
 
-        if (clickUri != null && stemUri != null) {
+        if (clickUri != null && drumsUri != null && bassUri != null) {
             buildSynchronizedMix()
         } else {
-            statusView.text = "Un WAV cargado. Falta seleccionar el otro."
+            val loaded = listOf(clickUri, drumsUri, bassUri).count { it != null }
+            statusView.text = "$loaded de 3 WAV cargados."
         }
     }
 
     private fun buildSynchronizedMix() {
         if (isBuildingMix) return
         val click = clickUri ?: return
-        val stem = stemUri ?: return
+        val drums = drumsUri ?: return
+        val bass = bassUri ?: return
 
         isBuildingMix = true
         mixReady = false
         updateControls()
-        statusView.text = "Preparando mezcla sincronizada…"
+        statusView.text = "Preparando mezcla sincronizada de 3 pistas…"
 
         Thread {
             try {
-                val outputFile = File(cacheDir, "sequence_sync_03.wav")
-                createStereoSyncWav(click, stem, outputFile)
-
+                val outputFile = File(cacheDir, "sequence_sync_04.wav")
+                createStereoSyncWav(click, drums, bass, outputFile)
                 runOnUiThread {
                     preparePlayer(outputFile)
                     isBuildingMix = false
@@ -323,7 +331,7 @@ class MainActivity : Activity() {
                 currentTimeView.text = "0:00"
                 mixReady = true
                 updateControls()
-                statusView.text = "Listo: Click L + Stem R, sincronizados muestra por muestra."
+                statusView.text = "Listo: Click + Drums + Bass sincronizados muestra por muestra."
             }
             setOnCompletionListener {
                 if (!loopEnabled) {
@@ -344,7 +352,6 @@ class MainActivity : Activity() {
     private fun togglePlayback() {
         val player = mediaPlayer ?: return
         if (!mixReady) return
-
         if (player.isPlaying) {
             player.pause()
             playButton.text = "▶ PLAY"
@@ -352,7 +359,7 @@ class MainActivity : Activity() {
         } else {
             player.start()
             playButton.text = "❚❚ PAUSA"
-            statusView.text = "Reproduciendo con un solo reloj de audio."
+            statusView.text = "Reproduciendo 3 pistas con un solo reloj."
         }
     }
 
@@ -385,7 +392,13 @@ class MainActivity : Activity() {
 
         fun readMonoSample(): Short {
             if (framesRead >= frames) return 0
-            readFully(input, frameBuffer, 0, frameBuffer.size)
+            var total = 0
+            while (total < frameBuffer.size) {
+                val read = input.read(frameBuffer, total, frameBuffer.size - total)
+                if (read < 0) throw EOFException()
+                total += read
+            }
+
             var sum = 0
             var offset = 0
             repeat(channels) {
@@ -400,45 +413,54 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun createStereoSyncWav(clickUri: Uri, stemUri: Uri, outputFile: File) {
+    private fun createStereoSyncWav(clickUri: Uri, drumsUri: Uri, bassUri: Uri, outputFile: File) {
         val clickInput = BufferedInputStream(contentResolver.openInputStream(clickUri)
             ?: error("No se pudo abrir el click"), 64 * 1024)
-        val stemInput = BufferedInputStream(contentResolver.openInputStream(stemUri)
-            ?: error("No se pudo abrir el stem"), 64 * 1024)
+        val drumsInput = BufferedInputStream(contentResolver.openInputStream(drumsUri)
+            ?: error("No se pudo abrir drums"), 64 * 1024)
+        val bassInput = BufferedInputStream(contentResolver.openInputStream(bassUri)
+            ?: error("No se pudo abrir bass"), 64 * 1024)
 
         clickInput.use { clickStream ->
-            stemInput.use { stemStream ->
-                val click = parsePcm16Wav(clickStream)
-                val stem = parsePcm16Wav(stemStream)
+            drumsInput.use { drumsStream ->
+                bassInput.use { bassStream ->
+                    val click = parsePcm16Wav(clickStream)
+                    val drums = parsePcm16Wav(drumsStream)
+                    val bass = parsePcm16Wav(bassStream)
 
-                if (click.sampleRate != stem.sampleRate) {
-                    error("Los WAV deben tener el mismo sample rate (${click.sampleRate} vs ${stem.sampleRate} Hz)")
-                }
+                    val rates = setOf(click.sampleRate, drums.sampleRate, bass.sampleRate)
+                    if (rates.size != 1) {
+                        error("Los 3 WAV deben tener el mismo sample rate")
+                    }
 
-                val totalFrames = max(click.frames, stem.frames)
-                val dataBytes = totalFrames * 4L
-                if (dataBytes > 0x7fffffffL) error("Los archivos son demasiado largos para esta prueba")
+                    val totalFrames = max(click.frames, max(drums.frames, bass.frames))
+                    val dataBytes = totalFrames * 4L
+                    if (dataBytes > 0x7fffffffL) error("Los archivos son demasiado largos para esta prueba")
 
-                BufferedOutputStream(outputFile.outputStream(), 128 * 1024).use { out ->
-                    writeWavHeader(out, click.sampleRate, dataBytes.toInt())
+                    BufferedOutputStream(outputFile.outputStream(), 128 * 1024).use { out ->
+                        writeWavHeader(out, click.sampleRate, dataBytes.toInt())
+                        val framesPerBlock = 2048
+                        val block = ByteArray(framesPerBlock * 4)
+                        var writtenFrames = 0L
 
-                    val framesPerBlock = 2048
-                    val block = ByteArray(framesPerBlock * 4)
-                    var writtenFrames = 0L
+                        while (writtenFrames < totalFrames) {
+                            val count = minOf(framesPerBlock.toLong(), totalFrames - writtenFrames).toInt()
+                            var p = 0
+                            repeat(count) {
+                                val left = click.readMonoSample().toInt()
+                                val drumSample = drums.readMonoSample().toInt()
+                                val bassSample = bass.readMonoSample().toInt()
+                                val right = ((drumSample + bassSample) / 2)
+                                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
 
-                    while (writtenFrames < totalFrames) {
-                        val count = minOf(framesPerBlock.toLong(), totalFrames - writtenFrames).toInt()
-                        var p = 0
-                        repeat(count) {
-                            val left = click.readMonoSample().toInt()
-                            val right = stem.readMonoSample().toInt()
-                            block[p++] = (left and 0xff).toByte()
-                            block[p++] = ((left ushr 8) and 0xff).toByte()
-                            block[p++] = (right and 0xff).toByte()
-                            block[p++] = ((right ushr 8) and 0xff).toByte()
+                                block[p++] = (left and 0xff).toByte()
+                                block[p++] = ((left ushr 8) and 0xff).toByte()
+                                block[p++] = (right and 0xff).toByte()
+                                block[p++] = ((right ushr 8) and 0xff).toByte()
+                            }
+                            out.write(block, 0, count * 4)
+                            writtenFrames += count
                         }
-                        out.write(block, 0, count * 4)
-                        writtenFrames += count
                     }
                 }
             }
@@ -516,14 +538,14 @@ class MainActivity : Activity() {
         val b1 = input.read()
         val b2 = input.read()
         val b3 = input.read()
-        if (b3 < 0) throw EOFException()
+        if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0) throw EOFException()
         return b0 or (b1 shl 8) or (b2 shl 16) or (b3 shl 24)
     }
 
     private fun readLeShort(input: InputStream): Int {
         val b0 = input.read()
         val b1 = input.read()
-        if (b1 < 0) throw EOFException()
+        if (b0 < 0 || b1 < 0) throw EOFException()
         return b0 or (b1 shl 8)
     }
 
