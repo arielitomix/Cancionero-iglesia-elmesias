@@ -99,14 +99,9 @@
             color: #777;
         }
 
-        /*
-        IMPORTANTE:
-        No recortamos lo que Verovio dibuje
-        fuera de los límites del SVG.
-        */
         .partitura-contenedor {
             width: 100%;
-            overflow: visible;
+            overflow: hidden;
         }
 
         #partitura {
@@ -117,7 +112,6 @@
             display: block;
             width: 100%;
             height: auto;
-            overflow: visible;
         }
 
         footer {
@@ -224,6 +218,7 @@
     Cancionero de la Iglesia El Mesías
 </footer>
 
+
 <script>
 
 document.addEventListener(
@@ -265,10 +260,156 @@ document.addEventListener(
             }
 
 
+            /*
+            Ajusta solamente las frases largas
+            del chart cuando estamos en celular.
+            */
+
+            function ajustarLetrasMovil() {
+
+                if (!esCelular()) {
+                    return;
+                }
+
+                const svg =
+                    document.querySelector(
+                        "#partitura svg"
+                    );
+
+                if (!svg) {
+                    return;
+                }
+
+
+                const frasesLetra = [
+
+                    "Vamos a cantar",
+
+                    "Alegres porque",
+
+                    "Amamos todo de ti",
+
+                    "Tú eres quien nos liberta",
+
+                    "Tú eres por quien"
+
+                ];
+
+
+                const viewBox =
+                    svg.viewBox.baseVal;
+
+                const limiteDerecho =
+                    viewBox.x +
+                    viewBox.width -
+                    35;
+
+
+                const textos =
+                    svg.querySelectorAll("text");
+
+
+                textos.forEach(function (elemento) {
+
+                    const texto =
+                        elemento.textContent
+                            .trim();
+
+
+                    const esLetra =
+                        frasesLetra.some(
+                            function (frase) {
+
+                                return texto
+                                    .startsWith(frase);
+
+                            }
+                        );
+
+
+                    if (!esLetra) {
+                        return;
+                    }
+
+
+                    /*
+                    Quitamos cualquier ajuste viejo
+                    antes de calcular.
+                    */
+
+                    elemento.removeAttribute(
+                        "textLength"
+                    );
+
+                    elemento.removeAttribute(
+                        "lengthAdjust"
+                    );
+
+
+                    let caja;
+
+                    try {
+
+                        caja =
+                            elemento.getBBox();
+
+                    } catch (error) {
+
+                        return;
+                    }
+
+
+                    const finalTexto =
+                        caja.x +
+                        caja.width;
+
+
+                    /*
+                    Si la frase sale del borde
+                    de la página, la ajustamos
+                    horizontalmente.
+                    */
+
+                    if (
+                        finalTexto >
+                        limiteDerecho
+                    ) {
+
+                        const espacioDisponible =
+                            limiteDerecho -
+                            caja.x;
+
+
+                        if (
+                            espacioDisponible >
+                            100
+                        ) {
+
+                            elemento.setAttribute(
+                                "textLength",
+                                espacioDisponible
+                            );
+
+                            elemento.setAttribute(
+                                "lengthAdjust",
+                                "spacingAndGlyphs"
+                            );
+
+                        }
+
+                    }
+
+                });
+
+            }
+
+
             function cargarYTransponer() {
 
                 const semitonos =
-                    Number(selector.value);
+                    Number(
+                        selector.value
+                    );
 
                 const movil =
                     esCelular();
@@ -281,10 +422,6 @@ document.addEventListener(
                         ? ""
                         : String(semitonos),
 
-                    /*
-                    PC conserva los saltos originales.
-                    Móvil reorganiza los sistemas.
-                    */
                     breaks:
                         movil
                         ? "auto"
@@ -293,22 +430,28 @@ document.addEventListener(
                     pageWidth:
                         obtenerAnchoPartitura(),
 
-                    pageHeight: 60000,
+                    pageHeight:
+                        60000,
 
-                    adjustPageHeight: true,
+                    adjustPageHeight:
+                        true,
 
                     scale:
                         movil
                         ? 48
                         : 45,
 
-                    header: "none",
+                    header:
+                        "none",
 
-                    footer: "none",
+                    footer:
+                        "none",
 
-                    pageMarginTop: 40,
+                    pageMarginTop:
+                        40,
 
-                    pageMarginBottom: 40,
+                    pageMarginBottom:
+                        40,
 
                     pageMarginLeft:
                         movil
@@ -320,7 +463,8 @@ document.addEventListener(
                         ? 25
                         : 40,
 
-                    minLastJustification: 0
+                    minLastJustification:
+                        0
 
                 });
 
@@ -334,7 +478,9 @@ document.addEventListener(
                 if (!cargado) {
 
                     document
-                        .getElementById("estado")
+                        .getElementById(
+                            "estado"
+                        )
                         .innerHTML =
                         "No se pudo cargar el chart.";
 
@@ -343,7 +489,9 @@ document.addEventListener(
 
 
                 document
-                    .getElementById("estado")
+                    .getElementById(
+                        "estado"
+                    )
                     .style.display =
                     "none";
 
@@ -353,9 +501,22 @@ document.addEventListener(
 
 
                 document
-                    .getElementById("partitura")
+                    .getElementById(
+                        "partitura"
+                    )
                     .innerHTML =
                     svg;
+
+
+                /*
+                Después de dibujar el SVG,
+                corregimos únicamente la letra
+                larga en celular.
+                */
+
+                requestAnimationFrame(
+                    ajustarLetrasMovil
+                );
 
             }
 
@@ -364,13 +525,17 @@ document.addEventListener(
 
 
             document
-                .getElementById("subir")
+                .getElementById(
+                    "subir"
+                )
                 .addEventListener(
                     "click",
                     function () {
 
                         let valor =
-                            Number(selector.value);
+                            Number(
+                                selector.value
+                            );
 
                         valor =
                             (valor + 1) % 12;
@@ -385,13 +550,17 @@ document.addEventListener(
 
 
             document
-                .getElementById("bajar")
+                .getElementById(
+                    "bajar"
+                )
                 .addEventListener(
                     "click",
                     function () {
 
                         let valor =
-                            Number(selector.value);
+                            Number(
+                                selector.value
+                            );
 
                         valor =
                             (valor + 11) % 12;
