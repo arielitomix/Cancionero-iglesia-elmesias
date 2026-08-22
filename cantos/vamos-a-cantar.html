@@ -99,9 +99,14 @@
             color: #777;
         }
 
+        /*
+        IMPORTANTE:
+        No recortamos lo que Verovio dibuje
+        fuera de los límites del SVG.
+        */
         .partitura-contenedor {
             width: 100%;
-            overflow: hidden;
+            overflow: visible;
         }
 
         #partitura {
@@ -112,6 +117,7 @@
             display: block;
             width: 100%;
             height: auto;
+            overflow: visible;
         }
 
         footer {
@@ -218,7 +224,6 @@
     Cancionero de la Iglesia El Mesías
 </footer>
 
-
 <script>
 
 document.addEventListener(
@@ -252,26 +257,9 @@ document.addEventListener(
 
             function obtenerAnchoPartitura() {
 
-                const contenedor =
-                    document.querySelector(
-                        ".partitura-contenedor"
-                    );
-
-                const ancho =
-                    contenedor.clientWidth;
-
-                /*
-                Verovio trabaja con un ancho
-                interno distinto a los píxeles CSS.
-
-                Este multiplicador nos da espacio
-                suficiente para mantener legibles
-                acordes, letras y pentagramas.
-                */
-
                 if (esCelular()) {
-    return 1350;
-}
+                    return 1350;
+                }
 
                 return 2100;
             }
@@ -294,12 +282,8 @@ document.addEventListener(
                         : String(semitonos),
 
                     /*
-                    COMPUTADORA:
-                    conserva los saltos del chart.
-
-                    CELULAR:
-                    Verovio reorganiza los sistemas
-                    para que entren en pantalla.
+                    PC conserva los saltos originales.
+                    Móvil reorganiza los sistemas.
                     */
                     breaks:
                         movil
@@ -386,9 +370,7 @@ document.addEventListener(
                     function () {
 
                         let valor =
-                            Number(
-                                selector.value
-                            );
+                            Number(selector.value);
 
                         valor =
                             (valor + 1) % 12;
@@ -409,9 +391,7 @@ document.addEventListener(
                     function () {
 
                         let valor =
-                            Number(
-                                selector.value
-                            );
+                            Number(selector.value);
 
                         valor =
                             (valor + 11) % 12;
@@ -430,11 +410,6 @@ document.addEventListener(
                 cargarYTransponer
             );
 
-
-            /*
-            Si giras el teléfono o cambia el ancho,
-            volvemos a maquetar la partitura.
-            */
 
             window.addEventListener(
                 "resize",
