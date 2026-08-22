@@ -3,7 +3,10 @@ package com.arielalvarez.sequenceplayer
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
-import android.media.MediaPlayer
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioTrack
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -17,11 +20,8 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
 import java.io.EOFException
-import java.io.File
 import java.io.InputStream
-import java.io.OutputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -33,27 +33,37 @@ class MainActivity : Activity() {
         private const val PICK_BASS = 1003
     }
 
-    private var clickUri: Uri? = null
-    private var drumsUri: Uri? = null
-    private var bassUri: Uri? = null
+    private data class LoadedStem(
+        val name: String,
+        val sampleRate: Int,
+        val samples: ShortArray
+    )
 
-    private var clickVolume = 100
-    private var drumsVolume = 100
-    private var bassVolume = 100
+    private var clickStem: LoadedStem? = null
+    private var drumsStem: LoadedStem? = null
+    private var bassStem: LoadedStem? = null
 
-    private var clickMuted = false
-    private var drumsMuted = false
-    private var bassMuted = false
+    @Volatile private var clickVolume = 100
+    @Volatile private var drumsVolume = 100
+    @Volatile private var bassVolume = 100
 
-    private var clickSolo = false
-    private var drumsSolo = false
-    private var bassSolo = false
+    @Volatile private var clickMuted = false
+    @Volatile private var drumsMuted = false
+    @Volatile private var bassMuted = false
 
-    private var mediaPlayer: MediaPlayer? = null
-    private var loopEnabled = false
-    private var mixReady = false
-    private var isBuildingMix = false
-    private var rebuildRequest = 0
+    @Volatile private var clickSolo = false
+    @Volatile private var drumsSolo = false
+    @Volatile private var bassSolo = false
+
+    @Volatile private var playing = false
+    @Volatile private var loopEnabled = false
+    @Volatile private var currentFrame = 0
+    @Volatile private var generation = 0
+
+    private var sampleRate = 48000
+    private var totalFrames = 0
+    private var audioTrack: AudioTrack? = null
+    private var audioThread: Thread? = null
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -76,18 +86,16 @@ class MainActivity : Activity() {
 
     private val progressUpdater = object : Runnable {
         override fun run() {
-            mediaPlayer?.takeIf { mixReady }?.let { player ->
-                currentTimeView.text = formatTime(player.currentPosition)
-                if (!seekBar.isPressed && player.duration > 0) {
-                    seekBar.progress = player.currentPosition.coerceAtMost(seekBar.max)
-                }
-            }
+            val ms = if (sampleRate > 0) ((currentFrame.toLong() * 1000L) / sampleRate).toInt() else 0
+            currentTimeView.text = formatTime(ms)
+            if (!seekBar.isPressed) seekBar.progress = ms.coerceAtMost(seekBar.max)
             handler.postDelayed(this, 100)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setVolumeControlStream(AudioManager.STREAM_MUSIC)
         setContentView(buildUi())
         updateControls()
         handler.post(progressUpdater)
@@ -115,58 +123,58 @@ class MainActivity : Activity() {
             textSize = 28f
         })
         root.addView(TextView(this).apply {
-            text = "Prototipo nativo 0.5 · volumen + mute + solo"
+            text = "Prototipo nativo 0.6 · mixer en tiempo real"
             setTextColor(Color.rgb(145, 160, 178))
             textSize = 13f
             setPadding(0, 0, 0, dp(12))
         })
 
-        val clickPick = Button(this).apply {
+        root.addView(Button(this).apply {
             text = "+ CLICK WAV"
             setOnClickListener { openDocumentPicker(PICK_CLICK) }
-        }
-        root.addView(clickPick, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
-        clickNameView = createFileLabel("Click: ninguno", ::dp)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+        clickNameView = fileLabel("Click: ninguno", ::dp)
         root.addView(clickNameView)
-        root.addView(createStemControls("CLICK", ::dp,
-            onVolume = { clickVolume = it; rebuildFromControls() },
-            onMute = { clickMuted = !clickMuted; updateStemButtons(); rebuildFromControls() },
-            onSolo = { clickSolo = !clickSolo; updateStemButtons(); rebuildFromControls() },
-            assignButtons = { m, s -> clickMuteButton = m; clickSoloButton = s }
+        root.addView(stemControls("CLICK", ::dp,
+            volume = { clickVolume },
+            setVolume = { clickVolume = it },
+            toggleMute = { clickMuted = !clickMuted; updateStemButtons() },
+            toggleSolo = { clickSolo = !clickSolo; updateStemButtons() },
+            assign = { m, s -> clickMuteButton = m; clickSoloButton = s }
         ))
 
-        val drumsPick = Button(this).apply {
+        root.addView(Button(this).apply {
             text = "+ DRUMS WAV"
             setOnClickListener { openDocumentPicker(PICK_DRUMS) }
-        }
-        root.addView(drumsPick, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
-        drumsNameView = createFileLabel("Drums: ninguno", ::dp)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+        drumsNameView = fileLabel("Drums: ninguno", ::dp)
         root.addView(drumsNameView)
-        root.addView(createStemControls("DRUMS", ::dp,
-            onVolume = { drumsVolume = it; rebuildFromControls() },
-            onMute = { drumsMuted = !drumsMuted; updateStemButtons(); rebuildFromControls() },
-            onSolo = { drumsSolo = !drumsSolo; updateStemButtons(); rebuildFromControls() },
-            assignButtons = { m, s -> drumsMuteButton = m; drumsSoloButton = s }
+        root.addView(stemControls("DRUMS", ::dp,
+            volume = { drumsVolume },
+            setVolume = { drumsVolume = it },
+            toggleMute = { drumsMuted = !drumsMuted; updateStemButtons() },
+            toggleSolo = { drumsSolo = !drumsSolo; updateStemButtons() },
+            assign = { m, s -> drumsMuteButton = m; drumsSoloButton = s }
         ))
 
-        val bassPick = Button(this).apply {
+        root.addView(Button(this).apply {
             text = "+ BASS WAV"
             setOnClickListener { openDocumentPicker(PICK_BASS) }
-        }
-        root.addView(bassPick, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
-        bassNameView = createFileLabel("Bass: ninguno", ::dp)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+        bassNameView = fileLabel("Bass: ninguno", ::dp)
         root.addView(bassNameView)
-        root.addView(createStemControls("BASS", ::dp,
-            onVolume = { bassVolume = it; rebuildFromControls() },
-            onMute = { bassMuted = !bassMuted; updateStemButtons(); rebuildFromControls() },
-            onSolo = { bassSolo = !bassSolo; updateStemButtons(); rebuildFromControls() },
-            assignButtons = { m, s -> bassMuteButton = m; bassSoloButton = s }
+        root.addView(stemControls("BASS", ::dp,
+            volume = { bassVolume },
+            setVolume = { bassVolume = it },
+            toggleMute = { bassMuted = !bassMuted; updateStemButtons() },
+            toggleSolo = { bassSolo = !bassSolo; updateStemButtons() },
+            assign = { m, s -> bassMuteButton = m; bassSoloButton = s }
         ))
 
         val timeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(10), 0, 0)
+            setPadding(0, dp(8), 0, 0)
         }
         currentTimeView = TextView(this).apply {
             text = "0:00"
@@ -191,13 +199,14 @@ class MainActivity : Activity() {
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    mediaPlayer?.seekTo(seekBar?.progress ?: 0)
+                    val ms = seekBar?.progress ?: 0
+                    seekToMs(ms)
                 }
             })
         }
-        root.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)))
+        root.addView(seekBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)))
 
-        val controls = LinearLayout(this).apply {
+        val transport = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
@@ -207,24 +216,23 @@ class MainActivity : Activity() {
             text = "↻ LOOP"
             setOnClickListener {
                 loopEnabled = !loopEnabled
-                mediaPlayer?.isLooping = loopEnabled
                 text = if (loopEnabled) "↻ LOOP ✓" else "↻ LOOP"
             }
         }
-        controls.addView(stopButton, LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginEnd = dp(5) })
-        controls.addView(playButton, LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginEnd = dp(5) })
-        controls.addView(loopButton, LinearLayout.LayoutParams(0, dp(54), 1f))
-        root.addView(controls)
+        transport.addView(stopButton, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginEnd = dp(5) })
+        transport.addView(playButton, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginEnd = dp(5) })
+        transport.addView(loopButton, LinearLayout.LayoutParams(0, dp(52), 1f))
+        root.addView(transport)
 
         statusView = TextView(this).apply {
             text = "Carga Click + Drums + Bass en WAV PCM 16-bit."
             setTextColor(Color.rgb(145, 160, 178))
             textSize = 12f
-            setPadding(0, dp(12), 0, 0)
+            setPadding(0, dp(10), 0, 0)
         }
         root.addView(statusView)
         root.addView(TextView(this).apply {
-            text = "Salida: Click = L · Drums + Bass = R · mismo reloj de audio."
+            text = "0.6: volumen, Mute y Solo cambian durante la reproducción sin reconstruir la mezcla."
             setTextColor(Color.rgb(110, 124, 142))
             textSize = 11f
         })
@@ -233,54 +241,56 @@ class MainActivity : Activity() {
         return root
     }
 
-    private fun createFileLabel(textValue: String, dp: (Int) -> Int): TextView = TextView(this).apply {
+    private fun fileLabel(textValue: String, dp: (Int) -> Int) = TextView(this).apply {
         text = textValue
         setTextColor(Color.rgb(190, 199, 210))
         textSize = 12f
-        setPadding(0, dp(5), 0, dp(4))
+        setPadding(0, dp(4), 0, dp(3))
     }
 
-    private fun createStemControls(
+    private fun stemControls(
         label: String,
         dp: (Int) -> Int,
-        onVolume: (Int) -> Unit,
-        onMute: () -> Unit,
-        onSolo: () -> Unit,
-        assignButtons: (Button, Button) -> Unit
+        volume: () -> Int,
+        setVolume: (Int) -> Unit,
+        toggleMute: () -> Unit,
+        toggleSolo: () -> Unit,
+        assign: (Button, Button) -> Unit
     ): LinearLayout {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(5))
+            setPadding(0, 0, 0, dp(4))
         }
-        val volumeLabel = TextView(this).apply {
-            text = "$label 100%"
+        val volumeText = TextView(this).apply {
+            text = "$label ${volume()}%"
             setTextColor(Color.LTGRAY)
             textSize = 11f
         }
-        val volume = SeekBar(this).apply {
+        val slider = SeekBar(this).apply {
             max = 100
-            progress = 100
+            progress = volume()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    volumeLabel.text = "$label $progress%"
+                    volumeText.text = "$label $progress%"
+                    if (fromUser) setVolume(progress)
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-                override fun onStopTrackingTouch(seekBar: SeekBar?) { onVolume(seekBar?.progress ?: 100) }
+                override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
             })
         }
-        val mute = Button(this).apply { text = "M"; setOnClickListener { onMute() } }
-        val solo = Button(this).apply { text = "S"; setOnClickListener { onSolo() } }
-        assignButtons(mute, solo)
+        val mute = Button(this).apply { text = "M"; setOnClickListener { toggleMute() } }
+        val solo = Button(this).apply { text = "S"; setOnClickListener { toggleSolo() } }
+        assign(mute, solo)
 
         val left = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(volumeLabel)
-            addView(volume, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
+            addView(volumeText)
+            addView(slider, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
         }
         row.addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(mute, LinearLayout.LayoutParams(dp(48), dp(44)).apply { marginStart = dp(4) })
-        row.addView(solo, LinearLayout.LayoutParams(dp(48), dp(44)).apply { marginStart = dp(4) })
+        row.addView(mute, LinearLayout.LayoutParams(dp(46), dp(42)).apply { marginStart = dp(4) })
+        row.addView(solo, LinearLayout.LayoutParams(dp(46), dp(42)).apply { marginStart = dp(4) })
         return row
     }
 
@@ -315,268 +325,336 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Esta versión solo acepta WAV", Toast.LENGTH_LONG).show()
             return
         }
-        when (requestCode) {
-            PICK_CLICK -> { clickUri = uri; clickNameView.text = "Click: $name" }
-            PICK_DRUMS -> { drumsUri = uri; drumsNameView.text = "Drums: $name" }
-            PICK_BASS -> { bassUri = uri; bassNameView.text = "Bass: $name" }
-        }
-        if (allLoaded()) buildSynchronizedMix(0, false) else {
-            statusView.text = "${listOf(clickUri, drumsUri, bassUri).count { it != null }} de 3 WAV cargados."
-        }
-    }
 
-    private fun allLoaded() = clickUri != null && drumsUri != null && bassUri != null
-
-    private fun rebuildFromControls() {
-        if (!allLoaded() || isBuildingMix) return
-        val old = mediaPlayer
-        val position = old?.currentPosition ?: 0
-        val wasPlaying = old?.isPlaying == true
-        buildSynchronizedMix(position, wasPlaying)
-    }
-
-    private fun buildSynchronizedMix(resumePosition: Int, resumePlaying: Boolean) {
-        val click = clickUri ?: return
-        val drums = drumsUri ?: return
-        val bass = bassUri ?: return
-        val request = ++rebuildRequest
-
-        isBuildingMix = true
-        mixReady = false
-        updateControls()
-        mediaPlayer?.pause()
-        statusView.text = "Preparando mezcla…"
-
-        val snapshot = MixerState(clickVolume, drumsVolume, bassVolume, clickMuted, drumsMuted, bassMuted, clickSolo, drumsSolo, bassSolo)
+        statusView.text = "Cargando $name…"
         Thread {
             try {
-                val outputFile = File(cacheDir, "sequence_sync_05_$request.wav")
-                createStereoSyncWav(click, drums, bass, outputFile, snapshot)
+                val stem = loadPcm16Wav(uri, name)
                 runOnUiThread {
-                    if (request != rebuildRequest) return@runOnUiThread
-                    preparePlayer(outputFile, resumePosition, resumePlaying)
-                    isBuildingMix = false
+                    when (requestCode) {
+                        PICK_CLICK -> { clickStem = stem; clickNameView.text = "Click: $name" }
+                        PICK_DRUMS -> { drumsStem = stem; drumsNameView.text = "Drums: $name" }
+                        PICK_BASS -> { bassStem = stem; bassNameView.text = "Bass: $name" }
+                    }
+                    validateLoadedStems()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    isBuildingMix = false
-                    mixReady = false
-                    updateControls()
-                    statusView.text = "No se pudo preparar: ${e.message ?: "WAV incompatible"}"
+                    statusView.text = "No se pudo cargar: ${e.message ?: "WAV incompatible"}"
+                    Toast.makeText(this, statusView.text, Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
     }
 
-    private fun preparePlayer(file: File, resumePosition: Int, resumePlaying: Boolean) {
-        mediaPlayer?.release()
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(file.absolutePath)
-            isLooping = loopEnabled
-            setOnPreparedListener { player ->
-                seekBar.max = player.duration.coerceAtLeast(1)
-                durationView.text = formatTime(player.duration)
-                val pos = resumePosition.coerceIn(0, player.duration.coerceAtLeast(0))
-                player.seekTo(pos)
-                seekBar.progress = pos
-                currentTimeView.text = formatTime(pos)
-                mixReady = true
-                updateControls()
-                if (resumePlaying) {
-                    player.start()
-                    playButton.text = "❚❚ PAUSA"
-                } else {
-                    playButton.text = "▶ PLAY"
-                }
-                statusView.text = "Mezcla lista · controles aplicados."
-            }
-            setOnCompletionListener { if (!loopEnabled) playButton.text = "▶ PLAY" }
-            setOnErrorListener { _, _, _ -> mixReady = false; updateControls(); true }
-            prepareAsync()
+    private fun validateLoadedStems() {
+        val stems = listOfNotNull(clickStem, drumsStem, bassStem)
+        if (stems.isEmpty()) {
+            updateControls()
+            return
         }
+        val rates = stems.map { it.sampleRate }.toSet()
+        if (rates.size > 1) {
+            statusView.text = "Los WAV deben usar el mismo sample rate."
+            updateControls()
+            return
+        }
+        sampleRate = stems.first().sampleRate
+        totalFrames = stems.maxOf { it.samples.size }
+        val durationMs = ((totalFrames.toLong() * 1000L) / sampleRate).toInt()
+        seekBar.max = durationMs.coerceAtLeast(1)
+        durationView.text = formatTime(durationMs)
+
+        if (allLoaded()) {
+            currentFrame = 0
+            statusView.text = "3 WAV listos. Mixer en tiempo real preparado."
+        } else {
+            statusView.text = "${stems.size} de 3 WAV cargados."
+        }
+        updateControls()
     }
 
+    private fun allLoaded() = clickStem != null && drumsStem != null && bassStem != null &&
+        setOf(clickStem!!.sampleRate, drumsStem!!.sampleRate, bassStem!!.sampleRate).size == 1
+
     private fun togglePlayback() {
-        val player = mediaPlayer ?: return
-        if (!mixReady) return
-        if (player.isPlaying) {
-            player.pause(); playButton.text = "▶ PLAY"; statusView.text = "Pausado."
-        } else {
-            player.start(); playButton.text = "❚❚ PAUSA"; statusView.text = "Reproduciendo."
-        }
+        if (!allLoaded()) return
+        if (playing) pausePlayback() else startPlayback()
+    }
+
+    private fun startPlayback() {
+        if (playing || !allLoaded()) return
+        playing = true
+        playButton.text = "❚❚ PAUSA"
+        statusView.text = "Reproduciendo · mixer en tiempo real."
+        startAudioEngine()
+    }
+
+    private fun pausePlayback() {
+        playing = false
+        generation++
+        audioTrack?.pause()
+        audioTrack?.flush()
+        audioTrack?.release()
+        audioTrack = null
+        playButton.text = "▶ PLAY"
+        statusView.text = "Pausado."
     }
 
     private fun stopPlayback() {
-        val player = mediaPlayer ?: return
-        if (player.isPlaying) player.pause()
-        player.seekTo(0)
+        playing = false
+        generation++
+        audioTrack?.pause()
+        audioTrack?.flush()
+        audioTrack?.release()
+        audioTrack = null
+        currentFrame = 0
         seekBar.progress = 0
         currentTimeView.text = "0:00"
         playButton.text = "▶ PLAY"
+        statusView.text = "Detenido."
+    }
+
+    private fun seekToMs(ms: Int) {
+        val newFrame = ((ms.toLong() * sampleRate) / 1000L).toInt().coerceIn(0, totalFrames)
+        val wasPlaying = playing
+        generation++
+        audioTrack?.pause()
+        audioTrack?.flush()
+        audioTrack?.release()
+        audioTrack = null
+        currentFrame = newFrame
+        if (wasPlaying) startAudioEngine()
+    }
+
+    private fun startAudioEngine() {
+        val click = clickStem ?: return
+        val drums = drumsStem ?: return
+        val bass = bassStem ?: return
+        val localGeneration = ++generation
+
+        val minBufferBytes = AudioTrack.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_OUT_STEREO,
+            AudioFormat.ENCODING_PCM_16BIT
+        ).coerceAtLeast(4096)
+
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                    .build()
+            )
+            .setBufferSizeInBytes(minBufferBytes * 2)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+
+        audioTrack = track
+        track.play()
+
+        audioThread = Thread {
+            val framesPerBlock = 1024
+            val out = ShortArray(framesPerBlock * 2)
+
+            while (playing && localGeneration == generation) {
+                var frame = currentFrame
+                if (frame >= totalFrames) {
+                    if (loopEnabled) {
+                        currentFrame = 0
+                        frame = 0
+                    } else {
+                        playing = false
+                        handler.post {
+                            playButton.text = "▶ PLAY"
+                            statusView.text = "Reproducción terminada."
+                        }
+                        break
+                    }
+                }
+
+                val frames = minOf(framesPerBlock, totalFrames - frame)
+                val anySolo = clickSolo || drumsSolo || bassSolo
+                val clickGain = effectiveGain(clickVolume, clickMuted, clickSolo, anySolo)
+                val drumsGain = effectiveGain(drumsVolume, drumsMuted, drumsSolo, anySolo)
+                val bassGain = effectiveGain(bassVolume, bassMuted, bassSolo, anySolo)
+
+                var p = 0
+                for (i in 0 until frames) {
+                    val idx = frame + i
+                    val clickSample = if (idx < click.samples.size) click.samples[idx].toInt() else 0
+                    val drumsSample = if (idx < drums.samples.size) drums.samples[idx].toInt() else 0
+                    val bassSample = if (idx < bass.samples.size) bass.samples[idx].toInt() else 0
+
+                    val left = (clickSample * clickGain).roundToInt()
+                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                    val right = ((drumsSample * drumsGain) + (bassSample * bassGain))
+                        .roundToInt()
+                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+
+                    out[p++] = left.toShort()
+                    out[p++] = right.toShort()
+                }
+
+                val written = track.write(out, 0, frames * 2, AudioTrack.WRITE_BLOCKING)
+                if (written < 0) break
+                currentFrame += frames
+            }
+
+            try { track.stop() } catch (_: Exception) { }
+            try { track.release() } catch (_: Exception) { }
+            if (audioTrack === track) audioTrack = null
+        }.apply {
+            name = "SequencePlayerAudio"
+            priority = Thread.MAX_PRIORITY
+            start()
+        }
+    }
+
+    private fun effectiveGain(volume: Int, muted: Boolean, solo: Boolean, anySolo: Boolean): Float {
+        if (muted) return 0f
+        if (anySolo && !solo) return 0f
+        return volume.coerceIn(0, 100) / 100f
     }
 
     private fun updateControls() {
-        val enabled = mixReady && !isBuildingMix
-        if (::playButton.isInitialized) playButton.isEnabled = enabled
-        if (::stopButton.isInitialized) stopButton.isEnabled = enabled
-        if (::loopButton.isInitialized) loopButton.isEnabled = enabled
-        if (::seekBar.isInitialized) seekBar.isEnabled = enabled
+        val ready = allLoaded()
+        playButton.isEnabled = ready
+        stopButton.isEnabled = ready
+        loopButton.isEnabled = ready
+        seekBar.isEnabled = ready
     }
 
-    private data class MixerState(
-        val clickVolume: Int, val drumsVolume: Int, val bassVolume: Int,
-        val clickMuted: Boolean, val drumsMuted: Boolean, val bassMuted: Boolean,
-        val clickSolo: Boolean, val drumsSolo: Boolean, val bassSolo: Boolean
-    )
+    private fun loadPcm16Wav(uri: Uri, name: String): LoadedStem {
+        val input = BufferedInputStream(contentResolver.openInputStream(uri) ?: error("No se pudo abrir el archivo"), 128 * 1024)
+        input.use { stream ->
+            if (readFourCc(stream) != "RIFF") error("El archivo no es WAV RIFF")
+            readLeInt(stream)
+            if (readFourCc(stream) != "WAVE") error("Formato WAV no válido")
 
-    private data class WavReader(
-        val input: BufferedInputStream,
-        val sampleRate: Int,
-        val channels: Int,
-        val frames: Long,
-        var framesRead: Long = 0
-    ) {
-        private val frameBuffer = ByteArray(channels * 2)
-        fun readMonoSample(): Short {
-            if (framesRead >= frames) return 0
-            var total = 0
-            while (total < frameBuffer.size) {
-                val read = input.read(frameBuffer, total, frameBuffer.size - total)
-                if (read < 0) throw EOFException()
-                total += read
-            }
-            var sum = 0
-            var offset = 0
-            repeat(channels) {
-                val lo = frameBuffer[offset].toInt() and 0xff
-                val hi = frameBuffer[offset + 1].toInt()
-                sum += (((hi shl 8) or lo).toShort()).toInt()
-                offset += 2
-            }
-            framesRead++
-            return (sum / channels).coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
-        }
-    }
+            var audioFormat = -1
+            var channels = -1
+            var rate = -1
+            var bits = -1
 
-    private fun createStereoSyncWav(clickUri: Uri, drumsUri: Uri, bassUri: Uri, outputFile: File, state: MixerState) {
-        val clickInput = BufferedInputStream(contentResolver.openInputStream(clickUri) ?: error("No se pudo abrir click"), 64 * 1024)
-        val drumsInput = BufferedInputStream(contentResolver.openInputStream(drumsUri) ?: error("No se pudo abrir drums"), 64 * 1024)
-        val bassInput = BufferedInputStream(contentResolver.openInputStream(bassUri) ?: error("No se pudo abrir bass"), 64 * 1024)
-
-        clickInput.use { cs -> drumsInput.use { ds -> bassInput.use { bs ->
-            val click = parsePcm16Wav(cs)
-            val drums = parsePcm16Wav(ds)
-            val bass = parsePcm16Wav(bs)
-            if (setOf(click.sampleRate, drums.sampleRate, bass.sampleRate).size != 1) error("Los WAV deben tener el mismo sample rate")
-
-            val totalFrames = max(click.frames, max(drums.frames, bass.frames))
-            val dataBytes = totalFrames * 4L
-            if (dataBytes > 0x7fffffffL) error("Archivos demasiado largos")
-
-            val anySolo = state.clickSolo || state.drumsSolo || state.bassSolo
-            fun gain(volume: Int, muted: Boolean, solo: Boolean): Double {
-                val audible = !muted && (!anySolo || solo)
-                return if (audible) volume.coerceIn(0, 100) / 100.0 else 0.0
-            }
-            val cg = gain(state.clickVolume, state.clickMuted, state.clickSolo)
-            val dg = gain(state.drumsVolume, state.drumsMuted, state.drumsSolo)
-            val bg = gain(state.bassVolume, state.bassMuted, state.bassSolo)
-
-            BufferedOutputStream(outputFile.outputStream(), 128 * 1024).use { out ->
-                writeWavHeader(out, click.sampleRate, dataBytes.toInt())
-                val block = ByteArray(2048 * 4)
-                var written = 0L
-                while (written < totalFrames) {
-                    val count = minOf(2048L, totalFrames - written).toInt()
-                    var p = 0
-                    repeat(count) {
-                        val left = (click.readMonoSample().toInt() * cg).roundToInt().coerceIn(-32768, 32767)
-                        val d = (drums.readMonoSample().toInt() * dg).roundToInt()
-                        val b = (bass.readMonoSample().toInt() * bg).roundToInt()
-                        val right = ((d + b) / 2).coerceIn(-32768, 32767)
-                        block[p++] = (left and 0xff).toByte(); block[p++] = ((left ushr 8) and 0xff).toByte()
-                        block[p++] = (right and 0xff).toByte(); block[p++] = ((right ushr 8) and 0xff).toByte()
+            while (true) {
+                val chunkId = readFourCc(stream)
+                val chunkSize = readLeInt(stream)
+                when (chunkId) {
+                    "fmt " -> {
+                        if (chunkSize < 16) error("Chunk fmt inválido")
+                        audioFormat = readLeShort(stream)
+                        channels = readLeShort(stream)
+                        rate = readLeInt(stream)
+                        readLeInt(stream)
+                        readLeShort(stream)
+                        bits = readLeShort(stream)
+                        skipFully(stream, chunkSize - 16)
+                        if ((chunkSize and 1) == 1) skipFully(stream, 1)
                     }
-                    out.write(block, 0, count * 4)
-                    written += count
-                }
-            }
-        }}}
-    }
+                    "data" -> {
+                        if (audioFormat != 1) error("Solo WAV PCM sin compresión")
+                        if (bits != 16) error("Solo WAV PCM de 16 bits")
+                        if (channels < 1) error("Canales inválidos")
+                        if (rate <= 0) error("Sample rate inválido")
 
-    private fun parsePcm16Wav(input: BufferedInputStream): WavReader {
-        if (readFourCc(input) != "RIFF") error("No es WAV RIFF")
-        readLeInt(input)
-        if (readFourCc(input) != "WAVE") error("WAV inválido")
-        var format = -1; var channels = -1; var sampleRate = -1; var bits = -1
-        while (true) {
-            val id = readFourCc(input)
-            val size = readLeInt(input)
-            if (size < 0) error("Chunk WAV inválido")
-            when (id) {
-                "fmt " -> {
-                    format = readLeShort(input); channels = readLeShort(input); sampleRate = readLeInt(input)
-                    readLeInt(input); readLeShort(input); bits = readLeShort(input)
-                    skipFully(input, size - 16); if ((size and 1) == 1) skipFully(input, 1)
+                        val bytesPerFrame = channels * 2
+                        val frameCount = chunkSize / bytesPerFrame
+                        val samples = ShortArray(frameCount)
+                        val frameBuffer = ByteArray(bytesPerFrame)
+
+                        for (frame in 0 until frameCount) {
+                            readFully(stream, frameBuffer, 0, bytesPerFrame)
+                            var sum = 0
+                            var off = 0
+                            repeat(channels) {
+                                val lo = frameBuffer[off].toInt() and 0xff
+                                val hi = frameBuffer[off + 1].toInt()
+                                val sample = ((hi shl 8) or lo).toShort().toInt()
+                                sum += sample
+                                off += 2
+                            }
+                            samples[frame] = (sum / channels)
+                                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                                .toShort()
+                        }
+                        return LoadedStem(name, rate, samples)
+                    }
+                    else -> {
+                        skipFully(stream, chunkSize)
+                        if ((chunkSize and 1) == 1) skipFully(stream, 1)
+                    }
                 }
-                "data" -> {
-                    if (format != 1) error("Solo WAV PCM")
-                    if (bits != 16) error("Solo WAV 16-bit")
-                    val bytesPerFrame = channels * 2
-                    return WavReader(input, sampleRate, channels, size.toLong() / bytesPerFrame)
-                }
-                else -> { skipFully(input, size); if ((size and 1) == 1) skipFully(input, 1) }
             }
         }
-    }
-
-    private fun writeWavHeader(out: OutputStream, sampleRate: Int, dataSize: Int) {
-        out.write("RIFF".toByteArray(Charsets.US_ASCII)); writeLeInt(out, 36 + dataSize)
-        out.write("WAVEfmt ".toByteArray(Charsets.US_ASCII)); writeLeInt(out, 16)
-        writeLeShort(out, 1); writeLeShort(out, 2); writeLeInt(out, sampleRate); writeLeInt(out, sampleRate * 4)
-        writeLeShort(out, 4); writeLeShort(out, 16); out.write("data".toByteArray(Charsets.US_ASCII)); writeLeInt(out, dataSize)
     }
 
     private fun readFourCc(input: InputStream): String {
-        val b = ByteArray(4); readFully(input, b, 0, 4); return String(b, Charsets.US_ASCII)
+        val bytes = ByteArray(4)
+        readFully(input, bytes, 0, 4)
+        return String(bytes, Charsets.US_ASCII)
     }
+
     private fun readLeInt(input: InputStream): Int {
-        val a = IntArray(4) { input.read() }; if (a.any { it < 0 }) throw EOFException()
-        return a[0] or (a[1] shl 8) or (a[2] shl 16) or (a[3] shl 24)
+        val b0 = input.read(); val b1 = input.read(); val b2 = input.read(); val b3 = input.read()
+        if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0) throw EOFException()
+        return b0 or (b1 shl 8) or (b2 shl 16) or (b3 shl 24)
     }
+
     private fun readLeShort(input: InputStream): Int {
-        val a = input.read(); val b = input.read(); if (a < 0 || b < 0) throw EOFException(); return a or (b shl 8)
+        val b0 = input.read(); val b1 = input.read()
+        if (b0 < 0 || b1 < 0) throw EOFException()
+        return b0 or (b1 shl 8)
     }
-    private fun writeLeInt(out: OutputStream, value: Int) {
-        out.write(value and 0xff); out.write((value ushr 8) and 0xff); out.write((value ushr 16) and 0xff); out.write((value ushr 24) and 0xff)
-    }
-    private fun writeLeShort(out: OutputStream, value: Int) { out.write(value and 0xff); out.write((value ushr 8) and 0xff) }
+
     private fun skipFully(input: InputStream, bytes: Int) {
         var remaining = bytes
         while (remaining > 0) {
             val skipped = input.skip(remaining.toLong()).toInt()
-            if (skipped > 0) remaining -= skipped else { if (input.read() < 0) throw EOFException(); remaining-- }
+            if (skipped > 0) remaining -= skipped else {
+                if (input.read() < 0) throw EOFException()
+                remaining--
+            }
         }
     }
+
     private fun readFully(input: InputStream, buffer: ByteArray, offset: Int, length: Int) {
         var total = 0
         while (total < length) {
-            val read = input.read(buffer, offset + total, length - total); if (read < 0) throw EOFException(); total += read
+            val read = input.read(buffer, offset + total, length - total)
+            if (read < 0) throw EOFException()
+            total += read
         }
     }
+
     private fun getDisplayName(uri: Uri): String? {
-        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-            val i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME); if (i >= 0 && c.moveToFirst()) return c.getString(i)
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) return cursor.getString(index)
         }
         return uri.lastPathSegment
     }
+
     private fun formatTime(ms: Int): String {
-        val s = (ms / 1000).coerceAtLeast(0); return "%d:%02d".format(s / 60, s % 60)
+        val sec = (ms / 1000).coerceAtLeast(0)
+        return "%d:%02d".format(sec / 60, sec % 60)
     }
 
     override fun onDestroy() {
+        playing = false
+        generation++
         handler.removeCallbacks(progressUpdater)
-        mediaPlayer?.release()
+        try { audioTrack?.pause() } catch (_: Exception) { }
+        try { audioTrack?.flush() } catch (_: Exception) { }
+        try { audioTrack?.release() } catch (_: Exception) { }
+        audioTrack = null
         super.onDestroy()
     }
 }
