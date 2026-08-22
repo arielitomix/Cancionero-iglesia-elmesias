@@ -6,7 +6,11 @@
 
     <title>Vamos a Cantar - Cancionero El Mesías</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.9.5/build/opensheetmusicdisplay.min.js"></script>
+    <!-- VEROVIO -->
+    <script
+        src="https://www.verovio.org/javascript/latest/verovio-toolkit-wasm.js"
+        defer>
+    </script>
 
     <style>
         * {
@@ -46,8 +50,7 @@
         }
 
         h1 {
-            margin-top: 0;
-            margin-bottom: 5px;
+            margin: 0 0 5px;
         }
 
         .autor,
@@ -61,53 +64,46 @@
 
         .controles {
             display: flex;
-            align-items: center;
             justify-content: center;
+            align-items: center;
             flex-wrap: wrap;
             gap: 10px;
 
-            padding: 15px;
-            margin-bottom: 30px;
-
             background: #f4f4f4;
+            padding: 15px;
+            margin-bottom: 25px;
             border-radius: 12px;
         }
 
         .controles button,
         .controles select {
-            border: 1px solid #ccc;
-            background: white;
-
             padding: 10px 14px;
-
+            border: 1px solid #ccc;
             border-radius: 8px;
-
+            background: white;
             font-size: 16px;
             cursor: pointer;
-        }
-
-        .controles button:hover {
-            background: #e9e9e9;
         }
 
         .tonalidad {
             font-weight: bold;
         }
 
-        .partitura-contenedor {
-            width: 100%;
-            overflow-x: auto;
+        #estado {
+            padding: 30px;
+            text-align: center;
+            color: #777;
         }
 
         #partitura {
             width: 100%;
-            min-width: 900px;
+            overflow-x: auto;
         }
 
-        .estado {
-            padding: 25px;
-            text-align: center;
-            color: #777;
+        #partitura svg {
+            display: block;
+            width: 100%;
+            height: auto;
         }
 
         footer {
@@ -120,8 +116,8 @@
         @media (max-width: 700px) {
 
             main {
-                padding: 0 8px;
                 margin-top: 15px;
+                padding: 0 8px;
             }
 
             .canto {
@@ -133,12 +129,11 @@
             }
 
             /*
-            En celular conservamos un ancho mínimo.
-            Así el chart no se aplasta:
-            el usuario puede desplazarse horizontalmente.
+            Evita que la partitura se haga
+            microscópica en celular.
             */
             #partitura {
-                min-width: 850px;
+                min-width: 750px;
             }
         }
     </style>
@@ -147,7 +142,9 @@
 <body>
 
 <header>
-    <a href="../index.html">← Volver al cancionero</a>
+    <a href="../index.html">
+        ← Volver al cancionero
+    </a>
 </header>
 
 <main>
@@ -197,15 +194,11 @@
 
         </div>
 
-        <div class="partitura-contenedor">
-
-            <div id="estado" class="estado">
-                Cargando chart...
-            </div>
-
-            <div id="partitura"></div>
-
+        <div id="estado">
+            Cargando chart...
         </div>
+
+        <div id="partitura"></div>
 
     </div>
 
@@ -215,147 +208,217 @@
     Cancionero de la Iglesia El Mesías
 </footer>
 
+
 <script>
 
-    const osmd =
-        new opensheetmusicdisplay.OpenSheetMusicDisplay(
-            "partitura",
-            {
-                autoResize: true,
+document.addEventListener(
+    "DOMContentLoaded",
+    function () {
 
-                backend: "svg",
+        verovio.module.onRuntimeInitialized =
+        async function () {
 
-                drawTitle: false,
-
-                drawComposer: false,
-
-                drawPartNames: false,
-
-                drawMeasureNumbers: false,
-
-                /*
-                IMPORTANTE:
-                respetar los saltos de pentagrama
-                que vienen desde MuseScore.
-                */
-                newSystemFromXML: true,
-
-                /*
-                Si MuseScore guardó algún cambio
-                de página, lo tratamos también
-                como nuevo sistema.
-                */
-                newSystemFromNewPageInXML: true
-            }
-        );
-
-
-    const archivo =
-        "Vamos a Cantar Chart.mxl";
-
-
-    async function cargarPartitura() {
-
-        try {
-
-            await osmd.load(archivo);
-
+            const toolkit =
+                new verovio.toolkit();
 
             /*
-            Evita que OSMD convierta muchos
-            compases vacíos en descansos
-            gigantes agrupados.
+            Configuración inicial.
+            Usamos los saltos guardados
+            en el archivo cuando sea posible.
             */
-            if (osmd.EngravingRules) {
 
-                osmd.EngravingRules
-                    .AutoGenerateMultipleRestMeasuresFromRestMeasures =
-                    false;
+            toolkit.setOptions({
+
+                breaks: "encoded",
+
+                pageWidth: 2100,
+
+                pageHeight: 60000,
+
+                adjustPageHeight: true,
+
+                scale: 45,
+
+                pageMarginTop: 60,
+                pageMarginBottom: 60,
+                pageMarginLeft: 60,
+                pageMarginRight: 60,
+
+                header: "none",
+                footer: "none",
+
+                minLastJustification: 0
+
+            });
+
+
+            try {
 
                 /*
-                Un poco más de aire entre
-                los pentagramas.
+                Los archivos .mxl están comprimidos.
+
+                Verovio recomienda cargarlos como
+                ArrayBuffer.
                 */
-                osmd.EngravingRules
-                    .MinimumDistanceBetweenSystems =
-                    8;
+
+                const respuesta =
+                    await fetch(
+                        "Vamos a Cantar Chart.mxl"
+                    );
+
+                if (!respuesta.ok) {
+                    throw new Error(
+                        "No se encontró el archivo MXL"
+                    );
+                }
+
+                const datos =
+                    await respuesta.arrayBuffer();
+
 
                 /*
-                Evitamos que el último sistema
-                se estire innecesariamente.
+                Cargamos el MXL comprimido.
                 */
-                osmd.EngravingRules
-                    .StretchLastSystemLine =
-                    false;
+
+                toolkit.loadZipDataBuffer(datos);
+
+
+                document
+                    .getElementById("estado")
+                    .style.display =
+                    "none";
+
+
+                /*
+                Dibujamos la primera página.
+                */
+
+                function dibujar() {
+
+                    const svg =
+                        toolkit.renderToSVG(1);
+
+                    document
+                        .getElementById("partitura")
+                        .innerHTML =
+                        svg;
+                }
+
+
+                dibujar();
+
+
+                /*
+                --------------------------
+                TRANSPOSICIÓN
+                --------------------------
+
+                En esta prueba ya dejamos
+                funcionando los botones.
+
+                El archivo original está en Eb.
+                */
+
+                const selector =
+                    document.getElementById("tono");
+
+
+                function transponer() {
+
+                    const semitonos =
+                        Number(selector.value);
+
+                    /*
+                    El valor 0 representa Eb.
+
+                    Verovio acepta números de
+                    semitonos para transponer.
+                    */
+
+                    toolkit.setOptions({
+                        transpose:
+                            semitonos === 0
+                            ? ""
+                            : String(semitonos)
+                    });
+
+                    /*
+                    Volvemos a cargar los datos
+                    originales para evitar
+                    acumular transposiciones.
+                    */
+
+                    toolkit.loadZipDataBuffer(datos);
+
+                    dibujar();
+                }
+
+
+                document
+                    .getElementById("subir")
+                    .addEventListener(
+                        "click",
+                        function () {
+
+                            let tono =
+                                Number(
+                                    selector.value
+                                );
+
+                            tono =
+                                (tono + 1) % 12;
+
+                            selector.value =
+                                tono;
+
+                            transponer();
+                        }
+                    );
+
+
+                document
+                    .getElementById("bajar")
+                    .addEventListener(
+                        "click",
+                        function () {
+
+                            let tono =
+                                Number(
+                                    selector.value
+                                );
+
+                            tono =
+                                (tono + 11) % 12;
+
+                            selector.value =
+                                tono;
+
+                            transponer();
+                        }
+                    );
+
+
+                selector.addEventListener(
+                    "change",
+                    transponer
+                );
+
+
+            } catch (error) {
+
+                console.error(error);
+
+                document
+                    .getElementById("estado")
+                    .innerHTML =
+                    "No se pudo cargar el chart.";
+
             }
 
-
-            document
-                .getElementById("estado")
-                .style.display =
-                "none";
-
-
-            osmd.render();
-
-
-        } catch (error) {
-
-            document
-                .getElementById("estado")
-                .innerHTML =
-                "No se pudo cargar el chart.";
-
-            console.error(error);
-
-        }
+        };
 
     }
-
-
-    cargarPartitura();
-
-
-    const selector =
-        document.getElementById("tono");
-
-
-    document
-        .getElementById("subir")
-        .addEventListener(
-            "click",
-            function() {
-
-                let tono =
-                    Number(selector.value);
-
-                tono =
-                    (tono + 1) % 12;
-
-                selector.value =
-                    tono;
-
-            }
-        );
-
-
-    document
-        .getElementById("bajar")
-        .addEventListener(
-            "click",
-            function() {
-
-                let tono =
-                    Number(selector.value);
-
-                tono =
-                    (tono + 11) % 12;
-
-                selector.value =
-                    tono;
-
-            }
-        );
+);
 
 </script>
 
