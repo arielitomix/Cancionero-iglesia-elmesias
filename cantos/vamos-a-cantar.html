@@ -6,7 +6,6 @@
 
     <title>Vamos a Cantar - Cancionero El Mesías</title>
 
-    <!-- OpenSheetMusicDisplay -->
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.9.5/build/opensheetmusicdisplay.min.js"></script>
 
     <style>
@@ -24,17 +23,17 @@
         header {
             background: #222;
             color: white;
-            padding: 25px 20px;
+            padding: 22px 20px;
         }
 
         header a {
             color: white;
             text-decoration: none;
-            opacity: 0.8;
+            opacity: 0.85;
         }
 
         main {
-            max-width: 1100px;
+            max-width: 1200px;
             margin: 30px auto;
             padding: 0 20px;
         }
@@ -51,23 +50,25 @@
             margin-bottom: 5px;
         }
 
-        .autor {
+        .autor,
+        .categoria {
             color: #777;
-            margin-bottom: 5px;
         }
 
         .categoria {
-            color: #777;
             margin-bottom: 25px;
         }
 
         .controles {
             display: flex;
             align-items: center;
+            justify-content: center;
             flex-wrap: wrap;
             gap: 10px;
+
             padding: 15px;
-            margin-bottom: 25px;
+            margin-bottom: 30px;
+
             background: #f4f4f4;
             border-radius: 12px;
         }
@@ -76,8 +77,11 @@
         .controles select {
             border: 1px solid #ccc;
             background: white;
+
             padding: 10px 14px;
+
             border-radius: 8px;
+
             font-size: 16px;
             cursor: pointer;
         }
@@ -88,7 +92,6 @@
 
         .tonalidad {
             font-weight: bold;
-            margin-right: 5px;
         }
 
         .partitura-contenedor {
@@ -97,11 +100,12 @@
         }
 
         #partitura {
-            min-width: 700px;
+            width: 100%;
+            min-width: 900px;
         }
 
         .estado {
-            padding: 20px;
+            padding: 25px;
             text-align: center;
             color: #777;
         }
@@ -113,18 +117,28 @@
             font-size: 14px;
         }
 
-        @media (max-width: 600px) {
+        @media (max-width: 700px) {
+
             main {
-                padding: 0 10px;
+                padding: 0 8px;
                 margin-top: 15px;
             }
 
             .canto {
-                padding: 20px 12px;
+                padding: 18px 10px;
             }
 
             h1 {
                 font-size: 26px;
+            }
+
+            /*
+            En celular conservamos un ancho mínimo.
+            Así el chart no se aplasta:
+            el usuario puede desplazarse horizontalmente.
+            */
+            #partitura {
+                min-width: 850px;
             }
         }
     </style>
@@ -152,11 +166,16 @@
 
         <div class="controles">
 
-            <span class="tonalidad">Tonalidad:</span>
+            <span class="tonalidad">
+                Tonalidad:
+            </span>
 
-            <button id="bajar">−½</button>
+            <button id="bajar">
+                −½
+            </button>
 
             <select id="tono">
+
                 <option value="0">E♭</option>
                 <option value="1">E</option>
                 <option value="2">F</option>
@@ -169,18 +188,23 @@
                 <option value="9">C</option>
                 <option value="10">D♭</option>
                 <option value="11">D</option>
+
             </select>
 
-            <button id="subir">+½</button>
+            <button id="subir">
+                +½
+            </button>
 
         </div>
 
         <div class="partitura-contenedor">
+
             <div id="estado" class="estado">
                 Cargando chart...
             </div>
 
             <div id="partitura"></div>
+
         </div>
 
     </div>
@@ -193,16 +217,42 @@
 
 <script>
 
-    const osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(
-        "partitura",
-        {
-            autoResize: true,
-            backend: "svg",
-            drawTitle: false
-        }
-    );
+    const osmd =
+        new opensheetmusicdisplay.OpenSheetMusicDisplay(
+            "partitura",
+            {
+                autoResize: true,
 
-    const archivo = "Vamos a Cantar Chart.mxl";
+                backend: "svg",
+
+                drawTitle: false,
+
+                drawComposer: false,
+
+                drawPartNames: false,
+
+                drawMeasureNumbers: false,
+
+                /*
+                IMPORTANTE:
+                respetar los saltos de pentagrama
+                que vienen desde MuseScore.
+                */
+                newSystemFromXML: true,
+
+                /*
+                Si MuseScore guardó algún cambio
+                de página, lo tratamos también
+                como nuevo sistema.
+                */
+                newSystemFromNewPageInXML: true
+            }
+        );
+
+
+    const archivo =
+        "Vamos a Cantar Chart.mxl";
+
 
     async function cargarPartitura() {
 
@@ -210,54 +260,102 @@
 
             await osmd.load(archivo);
 
-            document.getElementById("estado").style.display = "none";
+
+            /*
+            Evita que OSMD convierta muchos
+            compases vacíos en descansos
+            gigantes agrupados.
+            */
+            if (osmd.EngravingRules) {
+
+                osmd.EngravingRules
+                    .AutoGenerateMultipleRestMeasuresFromRestMeasures =
+                    false;
+
+                /*
+                Un poco más de aire entre
+                los pentagramas.
+                */
+                osmd.EngravingRules
+                    .MinimumDistanceBetweenSystems =
+                    8;
+
+                /*
+                Evitamos que el último sistema
+                se estire innecesariamente.
+                */
+                osmd.EngravingRules
+                    .StretchLastSystemLine =
+                    false;
+            }
+
+
+            document
+                .getElementById("estado")
+                .style.display =
+                "none";
+
 
             osmd.render();
 
+
         } catch (error) {
 
-            document.getElementById("estado").innerHTML =
+            document
+                .getElementById("estado")
+                .innerHTML =
                 "No se pudo cargar el chart.";
 
             console.error(error);
+
         }
+
     }
+
 
     cargarPartitura();
 
 
-    /*
-       CONTROLES DE TONALIDAD
-
-       Primero comprobaremos que el MusicXML carga
-       correctamente.
-
-       Después conectaremos estos controles con la
-       transposición de la partitura.
-    */
-
-    const selector = document.getElementById("tono");
-
-    document.getElementById("subir").addEventListener("click", function() {
-
-        let tono = Number(selector.value);
-
-        tono = (tono + 1) % 12;
-
-        selector.value = tono;
-
-    });
+    const selector =
+        document.getElementById("tono");
 
 
-    document.getElementById("bajar").addEventListener("click", function() {
+    document
+        .getElementById("subir")
+        .addEventListener(
+            "click",
+            function() {
 
-        let tono = Number(selector.value);
+                let tono =
+                    Number(selector.value);
 
-        tono = (tono + 11) % 12;
+                tono =
+                    (tono + 1) % 12;
 
-        selector.value = tono;
+                selector.value =
+                    tono;
 
-    });
+            }
+        );
+
+
+    document
+        .getElementById("bajar")
+        .addEventListener(
+            "click",
+            function() {
+
+                let tono =
+                    Number(selector.value);
+
+                tono =
+                    (tono + 11) % 12;
+
+                selector.value =
+                    tono;
+
+            }
+        );
 
 </script>
 
