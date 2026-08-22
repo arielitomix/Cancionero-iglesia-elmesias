@@ -35,10 +35,6 @@
             opacity: 0.85;
         }
 
-        header a:hover {
-            opacity: 1;
-        }
-
         main {
             max-width: 1200px;
             margin: 30px auto;
@@ -57,13 +53,12 @@
             font-size: 34px;
         }
 
-        .autor {
+        .autor,
+        .categoria {
             color: #777;
-            margin-bottom: 3px;
         }
 
         .categoria {
-            color: #777;
             margin-bottom: 25px;
         }
 
@@ -73,10 +68,8 @@
             justify-content: center;
             flex-wrap: wrap;
             gap: 10px;
-
             padding: 15px;
             margin-bottom: 25px;
-
             background: #f4f4f4;
             border-radius: 12px;
         }
@@ -108,12 +101,11 @@
 
         .partitura-contenedor {
             width: 100%;
-            overflow-x: auto;
-            padding-bottom: 8px;
+            overflow: hidden;
         }
 
         #partitura {
-            min-width: 900px;
+            width: 100%;
         }
 
         #partitura svg {
@@ -146,11 +138,12 @@
             }
 
             .controles {
-                justify-content: flex-start;
+                justify-content: center;
             }
 
-            #partitura {
-                min-width: 760px;
+            button,
+            select {
+                min-height: 44px;
             }
         }
     </style>
@@ -249,11 +242,51 @@ document.addEventListener(
             const selector =
                 document.getElementById("tono");
 
+            let temporizadorResize;
+
+
+            function esCelular() {
+                return window.innerWidth <= 700;
+            }
+
+
+            function obtenerAnchoPartitura() {
+
+                const contenedor =
+                    document.querySelector(
+                        ".partitura-contenedor"
+                    );
+
+                const ancho =
+                    contenedor.clientWidth;
+
+                /*
+                Verovio trabaja con un ancho
+                interno distinto a los píxeles CSS.
+
+                Este multiplicador nos da espacio
+                suficiente para mantener legibles
+                acordes, letras y pentagramas.
+                */
+
+                if (esCelular()) {
+                    return Math.max(
+                        900,
+                        Math.round(ancho * 3)
+                    );
+                }
+
+                return 2100;
+            }
+
 
             function cargarYTransponer() {
 
                 const semitonos =
                     Number(selector.value);
+
+                const movil =
+                    esCelular();
 
 
                 toolkit.setOptions({
@@ -263,15 +296,30 @@ document.addEventListener(
                         ? ""
                         : String(semitonos),
 
-                    breaks: "encoded",
+                    /*
+                    COMPUTADORA:
+                    conserva los saltos del chart.
 
-                    pageWidth: 2100,
+                    CELULAR:
+                    Verovio reorganiza los sistemas
+                    para que entren en pantalla.
+                    */
+                    breaks:
+                        movil
+                        ? "auto"
+                        : "encoded",
+
+                    pageWidth:
+                        obtenerAnchoPartitura(),
 
                     pageHeight: 60000,
 
                     adjustPageHeight: true,
 
-                    scale: 45,
+                    scale:
+                        movil
+                        ? 48
+                        : 45,
 
                     header: "none",
 
@@ -281,11 +329,18 @@ document.addEventListener(
 
                     pageMarginBottom: 40,
 
-                    pageMarginLeft: 40,
+                    pageMarginLeft:
+                        movil
+                        ? 25
+                        : 40,
 
-                    pageMarginRight: 40,
+                    pageMarginRight:
+                        movil
+                        ? 25
+                        : 40,
 
                     minLastJustification: 0
+
                 });
 
 
@@ -376,6 +431,29 @@ document.addEventListener(
             selector.addEventListener(
                 "change",
                 cargarYTransponer
+            );
+
+
+            /*
+            Si giras el teléfono o cambia el ancho,
+            volvemos a maquetar la partitura.
+            */
+
+            window.addEventListener(
+                "resize",
+                function () {
+
+                    clearTimeout(
+                        temporizadorResize
+                    );
+
+                    temporizadorResize =
+                        setTimeout(
+                            cargarYTransponer,
+                            250
+                        );
+
+                }
             );
 
         };
