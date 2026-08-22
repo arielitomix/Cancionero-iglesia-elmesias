@@ -4,209 +4,98 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Vamos a Cantar - Cancionero El Mesías</title>
+    <title>Prueba de transposición</title>
 
-    <!-- VEROVIO -->
     <script
         src="https://www.verovio.org/javascript/latest/verovio-toolkit-wasm.js"
         defer>
     </script>
 
     <style>
-        * {
-            box-sizing: border-box;
-        }
-
         body {
-            margin: 0;
             font-family: Arial, sans-serif;
+            margin: 0;
             background: #f4f4f4;
-            color: #222;
-        }
-
-        header {
-            background: #222;
-            color: white;
-            padding: 22px 20px;
-        }
-
-        header a {
-            color: white;
-            text-decoration: none;
-            opacity: 0.85;
         }
 
         main {
-            max-width: 1200px;
+            max-width: 1100px;
             margin: 30px auto;
-            padding: 0 20px;
-        }
-
-        .canto {
+            padding: 20px;
             background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-        }
-
-        h1 {
-            margin: 0 0 5px;
-        }
-
-        .autor,
-        .categoria {
-            color: #777;
-        }
-
-        .categoria {
-            margin-bottom: 25px;
         }
 
         .controles {
             display: flex;
-            justify-content: center;
+            gap: 10px;
             align-items: center;
             flex-wrap: wrap;
-            gap: 10px;
-
-            background: #f4f4f4;
-            padding: 15px;
             margin-bottom: 25px;
-            border-radius: 12px;
         }
 
-        .controles button,
-        .controles select {
-            padding: 10px 14px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            background: white;
+        button, select {
+            padding: 10px 15px;
             font-size: 16px;
-            cursor: pointer;
-        }
-
-        .tonalidad {
-            font-weight: bold;
-        }
-
-        #estado {
-            padding: 30px;
-            text-align: center;
-            color: #777;
         }
 
         #partitura {
-            width: 100%;
             overflow-x: auto;
+            min-width: 700px;
         }
 
         #partitura svg {
-            display: block;
             width: 100%;
             height: auto;
         }
 
-        footer {
-            text-align: center;
-            padding: 30px;
-            color: #777;
-            font-size: 14px;
-        }
-
-        @media (max-width: 700px) {
-
-            main {
-                margin-top: 15px;
-                padding: 0 8px;
-            }
-
-            .canto {
-                padding: 18px 10px;
-            }
-
-            h1 {
-                font-size: 26px;
-            }
-
-            /*
-            Evita que la partitura se haga
-            microscópica en celular.
-            */
-            #partitura {
-                min-width: 750px;
-            }
+        #estado {
+            padding: 20px;
         }
     </style>
 </head>
 
 <body>
 
-<header>
-    <a href="../index.html">
-        ← Volver al cancionero
-    </a>
-</header>
-
 <main>
 
-    <div class="canto">
+    <h1>Vamos a Cantar</h1>
 
-        <h1>Vamos a Cantar</h1>
+    <div class="controles">
 
-        <div class="autor">
-            Omar Rodriguez
-        </div>
+        <strong>Tonalidad:</strong>
 
-        <div class="categoria">
-            Alabanza
-        </div>
+        <button id="bajar">
+            −½
+        </button>
 
-        <div class="controles">
+        <select id="tono">
+            <option value="0">E♭</option>
+            <option value="1">E</option>
+            <option value="2">F</option>
+            <option value="3">F♯</option>
+            <option value="4">G</option>
+            <option value="5">A♭</option>
+            <option value="6">A</option>
+            <option value="7">B♭</option>
+            <option value="8">B</option>
+            <option value="9">C</option>
+            <option value="10">D♭</option>
+            <option value="11">D</option>
+        </select>
 
-            <span class="tonalidad">
-                Tonalidad:
-            </span>
-
-            <button id="bajar">
-                −½
-            </button>
-
-            <select id="tono">
-
-                <option value="0">E♭</option>
-                <option value="1">E</option>
-                <option value="2">F</option>
-                <option value="3">F♯</option>
-                <option value="4">G</option>
-                <option value="5">A♭</option>
-                <option value="6">A</option>
-                <option value="7">B♭</option>
-                <option value="8">B</option>
-                <option value="9">C</option>
-                <option value="10">D♭</option>
-                <option value="11">D</option>
-
-            </select>
-
-            <button id="subir">
-                +½
-            </button>
-
-        </div>
-
-        <div id="estado">
-            Cargando chart...
-        </div>
-
-        <div id="partitura"></div>
+        <button id="subir">
+            +½
+        </button>
 
     </div>
 
-</main>
+    <div id="estado">
+        Cargando...
+    </div>
 
-<footer>
-    Cancionero de la Iglesia El Mesías
-</footer>
+    <div id="partitura"></div>
+
+</main>
 
 
 <script>
@@ -221,66 +110,75 @@ document.addEventListener(
             const toolkit =
                 new verovio.toolkit();
 
-            /*
-            Configuración inicial.
-            Usamos los saltos guardados
-            en el archivo cuando sea posible.
-            */
+            const respuesta =
+                await fetch(
+                    "Vamos a Cantar Chart.mxl"
+                );
 
-            toolkit.setOptions({
+            const datos =
+                await respuesta.arrayBuffer();
 
-                breaks: "encoded",
-
-                pageWidth: 2100,
-
-                pageHeight: 60000,
-
-                adjustPageHeight: true,
-
-                scale: 45,
-
-                pageMarginTop: 60,
-                pageMarginBottom: 60,
-                pageMarginLeft: 60,
-                pageMarginRight: 60,
-
-                header: "none",
-                footer: "none",
-
-                minLastJustification: 0
-
-            });
+            const selector =
+                document.getElementById("tono");
 
 
-            try {
+            function cargarYTransponer() {
 
                 /*
-                Los archivos .mxl están comprimidos.
-
-                Verovio recomienda cargarlos como
-                ArrayBuffer.
+                IMPORTANTE:
+                ponemos la transposición
+                ANTES de volver a cargar
+                el archivo.
                 */
 
-                const respuesta =
-                    await fetch(
-                        "Vamos a Cantar Chart.mxl"
+                const semitonos =
+                    Number(selector.value);
+
+
+                toolkit.setOptions({
+
+                    transpose:
+                        semitonos === 0
+                        ? ""
+                        : String(semitonos),
+
+                    breaks: "encoded",
+
+                    pageWidth: 2100,
+
+                    pageHeight: 60000,
+
+                    adjustPageHeight: true,
+
+                    scale: 45,
+
+                    header: "none",
+
+                    footer: "none"
+
+                });
+
+
+                /*
+                Volvemos a cargar siempre
+                el archivo ORIGINAL.
+                */
+
+                const cargado =
+                    toolkit.loadZipDataBuffer(
+                        datos
                     );
 
-                if (!respuesta.ok) {
-                    throw new Error(
-                        "No se encontró el archivo MXL"
-                    );
+
+                if (!cargado) {
+
+                    document
+                        .getElementById("estado")
+                        .innerHTML =
+                        "Error cargando el MXL.";
+
+                    return;
                 }
-
-                const datos =
-                    await respuesta.arrayBuffer();
-
-
-                /*
-                Cargamos el MXL comprimido.
-                */
-
-                toolkit.loadZipDataBuffer(datos);
 
 
                 document
@@ -290,130 +188,79 @@ document.addEventListener(
 
 
                 /*
-                Dibujamos la primera página.
+                Renderizamos de nuevo.
                 */
 
-                function dibujar() {
-
-                    const svg =
-                        toolkit.renderToSVG(1);
-
-                    document
-                        .getElementById("partitura")
-                        .innerHTML =
-                        svg;
-                }
-
-
-                dibujar();
-
-
-                /*
-                --------------------------
-                TRANSPOSICIÓN
-                --------------------------
-
-                En esta prueba ya dejamos
-                funcionando los botones.
-
-                El archivo original está en Eb.
-                */
-
-                const selector =
-                    document.getElementById("tono");
-
-
-                function transponer() {
-
-                    const semitonos =
-                        Number(selector.value);
-
-                    /*
-                    El valor 0 representa Eb.
-
-                    Verovio acepta números de
-                    semitonos para transponer.
-                    */
-
-                    toolkit.setOptions({
-                        transpose:
-                            semitonos === 0
-                            ? ""
-                            : String(semitonos)
-                    });
-
-                    /*
-                    Volvemos a cargar los datos
-                    originales para evitar
-                    acumular transposiciones.
-                    */
-
-                    toolkit.loadZipDataBuffer(datos);
-
-                    dibujar();
-                }
+                const svg =
+                    toolkit.renderToSVG(1);
 
 
                 document
-                    .getElementById("subir")
-                    .addEventListener(
-                        "click",
-                        function () {
+                    .getElementById("partitura")
+                    .innerHTML =
+                    svg;
 
-                            let tono =
-                                Number(
-                                    selector.value
-                                );
-
-                            tono =
-                                (tono + 1) % 12;
-
-                            selector.value =
-                                tono;
-
-                            transponer();
-                        }
-                    );
+            }
 
 
-                document
-                    .getElementById("bajar")
-                    .addEventListener(
-                        "click",
-                        function () {
+            /*
+            Primera carga:
+            tonalidad original Eb.
+            */
 
-                            let tono =
-                                Number(
-                                    selector.value
-                                );
-
-                            tono =
-                                (tono + 11) % 12;
-
-                            selector.value =
-                                tono;
-
-                            transponer();
-                        }
-                    );
+            cargarYTransponer();
 
 
-                selector.addEventListener(
-                    "change",
-                    transponer
+            document
+                .getElementById("subir")
+                .addEventListener(
+                    "click",
+                    function () {
+
+                        let valor =
+                            Number(
+                                selector.value
+                            );
+
+                        valor =
+                            (valor + 1) % 12;
+
+                        selector.value =
+                            valor;
+
+                        cargarYTransponer();
+
+                    }
                 );
 
 
-            } catch (error) {
+            document
+                .getElementById("bajar")
+                .addEventListener(
+                    "click",
+                    function () {
 
-                console.error(error);
+                        let valor =
+                            Number(
+                                selector.value
+                            );
 
-                document
-                    .getElementById("estado")
-                    .innerHTML =
-                    "No se pudo cargar el chart.";
+                        valor =
+                            (valor + 11) % 12;
 
-            }
+                        selector.value =
+                            valor;
+
+                        cargarYTransponer();
+
+                    }
+                );
+
+
+            selector.addEventListener(
+                "change",
+                cargarYTransponer
+            );
 
         };
 
