@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f14">
+  <title>Sequence Player</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b0f14;--panel:#141a22;--panel2:#1b2430;--text:#f3f6fa;--muted:#96a3b3;--accent:#22c55e;--accent2:#16a34a;--danger:#ef4444;--border:#293444}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    .wrap{max-width:760px;margin:0 auto;padding:18px 14px 40px}
+    .eyebrow{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+    h1{margin:4px 0 4px;font-size:28px}
+    .sub{color:var(--muted);font-size:14px;margin-bottom:18px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:16px;margin-bottom:14px}
+    .pick{display:block;width:100%;border:0;border-radius:14px;background:var(--accent);color:#04130a;font-weight:800;font-size:17px;padding:15px 18px;text-align:center;cursor:pointer}
+    input[type=file]{position:absolute;left:-9999px}
+    .filename{margin-top:12px;color:var(--muted);font-size:14px;overflow-wrap:anywhere}
+    .track-title{font-size:21px;font-weight:800;margin:14px 0 2px;overflow-wrap:anywhere}
+    .meta{color:var(--muted);font-size:13px}
+    .time-row{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-top:20px}
+    .time{font-size:44px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+    .duration{font-size:18px;color:var(--muted);font-variant-numeric:tabular-nums}
+    input[type=range]{width:100%;accent-color:var(--accent);margin:18px 0 4px;height:28px}
+    .controls{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:10px;margin-top:14px}
+    button{min-height:56px;border-radius:14px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:17px;font-weight:800;cursor:pointer;touch-action:manipulation}
+    button.primary{background:var(--accent);color:#04130a;border-color:transparent}
+    button.active{outline:2px solid var(--accent);background:#153723}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .status{margin-top:14px;padding:12px 14px;border-radius:12px;background:#0f151c;border:1px solid var(--border);font-size:14px;color:var(--muted)}
+    .ok{color:#86efac}
+    .warn{color:#fca5a5}
+    .hint{font-size:13px;color:var(--muted);line-height:1.5;margin:0}
+    @media(max-width:420px){.time{font-size:38px}.controls{grid-template-columns:1fr 1.25fr 1fr}button{font-size:15px;padding:0 8px}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="eyebrow">Prototype 0.1</div>
+    <h1>Sequence Player</h1>
+    <div class="sub">Prueba real de reproducción local en Android</div>
+
+    <section class="card">
+      <label class="pick" for="audioFile">＋ Cargar WAV / MP3</label>
+      <input id="audioFile" type="file" accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.flac">
+      <div id="fileName" class="filename">Ningún archivo cargado</div>
+
+      <div id="trackTitle" class="track-title">Sin audio</div>
+      <div id="trackMeta" class="meta">Selecciona un stem para comenzar</div>
+
+      <div class="time-row">
+        <div id="currentTime" class="time">0:00</div>
+        <div id="duration" class="duration">0:00</div>
+      </div>
+
+      <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Posición de reproducción">
+
+      <div class="controls">
+        <button id="stopBtn" type="button" disabled>■ STOP</button>
+        <button id="playBtn" type="button" class="primary" disabled>▶ PLAY</button>
+        <button id="loopBtn" type="button" aria-pressed="false" disabled>↻ LOOP</button>
+      </div>
+
+      <div id="status" class="status" aria-live="polite">Listo. Carga un archivo de audio.</div>
+    </section>
+
+    <section class="card">
+      <p class="hint"><strong>Esta prueba es intencionalmente simple.</strong> Primero queremos comprobar que tu celular puede abrir un archivo local, reproducirlo, pausarlo, detenerlo, mover la posición y hacer loop. Después de eso metemos dos stems sincronizados.</p>
+    </section>
+
+    <audio id="audio" preload="metadata"></audio>
+  </main>
+
+  <script>
+    const fileInput = document.getElementById('audioFile');
+    const audio = document.getElementById('audio');
+    const fileName = document.getElementById('fileName');
+    const trackTitle = document.getElementById('trackTitle');
+    const trackMeta = document.getElementById('trackMeta');
+    const currentTimeEl = document.getElementById('currentTime');
+    const durationEl = document.getElementById('duration');
+    const seek = document.getElementById('seek');
+    const playBtn = document.getElementById('playBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const loopBtn = document.getElementById('loopBtn');
+    const status = document.getElementById('status');
+
+    let objectUrl = null;
+    let seeking = false;
+
+    function fmt(seconds){
+      if(!Number.isFinite(seconds) || seconds < 0) seconds = 0;
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60).toString().padStart(2,'0');
+      return `${m}:${s}`;
+    }
+
+    function setStatus(message, type=''){
+      status.textContent = message;
+      status.className = 'status' + (type ? ` ${type}` : '');
+    }
+
+    function setEnabled(enabled){
+      playBtn.disabled = !enabled;
+      stopBtn.disabled = !enabled;
+      loopBtn.disabled = !enabled;
+    }
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if(!file) return;
+
+      audio.pause();
+      if(objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(file);
+      audio.src = objectUrl;
+      audio.load();
+
+      fileName.textContent = file.name;
+      trackTitle.textContent = file.name.replace(/\.[^.]+$/, '');
+      trackMeta.textContent = `${(file.size / (1024*1024)).toFixed(1)} MB · ${file.type || 'audio'}`;
+      seek.value = 0;
+      currentTimeEl.textContent = '0:00';
+      durationEl.textContent = '0:00';
+      playBtn.textContent = '▶ PLAY';
+      setEnabled(true);
+      setStatus('Archivo cargado. Leyendo duración…');
+    });
+
+    audio.addEventListener('loadedmetadata', () => {
+      durationEl.textContent = fmt(audio.duration);
+      setStatus('Audio listo. Dale PLAY.', 'ok');
+    });
+
+    audio.addEventListener('canplay', () => {
+      setEnabled(true);
+    });
+
+    audio.addEventListener('timeupdate', () => {
+      if(!seeking && Number.isFinite(audio.duration) && audio.duration > 0){
+        seek.value = Math.round((audio.currentTime / audio.duration) * 1000);
+      }
+      currentTimeEl.textContent = fmt(audio.currentTime);
+    });
+
+    audio.addEventListener('play', () => {
+      playBtn.textContent = '❚❚ PAUSA';
+      setStatus('Reproduciendo.', 'ok');
+    });
+
+    audio.addEventListener('pause', () => {
+      if(audio.currentTime > 0 && !audio.ended){
+        playBtn.textContent = '▶ PLAY';
+      }
+    });
+
+    audio.addEventListener('ended', () => {
+      playBtn.textContent = '▶ PLAY';
+      setStatus('Reproducción terminada.');
+    });
+
+    audio.addEventListener('error', () => {
+      setStatus('Este archivo no pudo reproducirse. Prueba otro WAV o MP3.', 'warn');
+    });
+
+    playBtn.addEventListener('click', async () => {
+      if(!audio.src) return;
+      if(audio.paused){
+        try{
+          await audio.play();
+        }catch(err){
+          setStatus('El navegador bloqueó la reproducción. Toca PLAY otra vez.', 'warn');
+        }
+      }else{
+        audio.pause();
+        playBtn.textContent = '▶ PLAY';
+        setStatus('Pausado.');
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      audio.pause();
+      audio.currentTime = 0;
+      seek.value = 0;
+      currentTimeEl.textContent = '0:00';
+      playBtn.textContent = '▶ PLAY';
+      setStatus('Detenido.');
+    });
+
+    loopBtn.addEventListener('click', () => {
+      audio.loop = !audio.loop;
+      loopBtn.classList.toggle('active', audio.loop);
+      loopBtn.setAttribute('aria-pressed', String(audio.loop));
+      setStatus(audio.loop ? 'Loop activado.' : 'Loop desactivado.');
+    });
+
+    seek.addEventListener('input', () => {
+      seeking = true;
+      if(Number.isFinite(audio.duration) && audio.duration > 0){
+        const preview = (Number(seek.value) / 1000) * audio.duration;
+        currentTimeEl.textContent = fmt(preview);
+      }
+    });
+
+    seek.addEventListener('change', () => {
+      if(Number.isFinite(audio.duration) && audio.duration > 0){
+        audio.currentTime = (Number(seek.value) / 1000) * audio.duration;
+      }
+      seeking = false;
+    });
+
+    seek.addEventListener('pointerup', () => { seeking = false; });
+  </script>
+</body>
+</html>
