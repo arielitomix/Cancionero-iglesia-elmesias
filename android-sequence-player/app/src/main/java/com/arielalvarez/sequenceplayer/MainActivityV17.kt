@@ -2,6 +2,7 @@ package com.arielalvarez.sequenceplayer
 
 import android.graphics.Color
 import android.media.AudioManager
+import android.media.AudioTrack
 import android.media.ToneGenerator
 import android.os.Bundle
 import android.os.Handler
@@ -27,6 +28,8 @@ class MainActivityV17 : MainActivityV16() {
     private var countBars = 1
     private var countInRunning = false
     private var lastBeatIndex = -1L
+    private var playbackAnchorFrame = 0L
+    private var observedTrack: AudioTrack? = null
 
     private var basePlayButton: Button? = null
     private lateinit var metroToggle: Button
@@ -40,16 +43,34 @@ class MainActivityV17 : MainActivityV16() {
         override fun run() {
             if (!metronomeEnabled || !isBasePlaying()) return
 
-            val frame = getBaseIntField("currentFrame")
+            val track = getBaseAudioTrack()
+            if (track == null) {
+                metroHandler.postDelayed(this, 2L)
+                return
+            }
+
+            if (observedTrack !== track) {
+                observedTrack = track
+                playbackAnchorFrame = getBaseIntField("currentFrame").toLong().coerceAtLeast(0L)
+                lastBeatIndex = -1L
+            }
+
+            val playedFrames = track.playbackHeadPosition.toLong() and 0xffffffffL
+            if (playedFrames <= 0L) {
+                metroHandler.postDelayed(this, 2L)
+                return
+            }
+
             val rate = getBaseIntField("sampleRate").coerceAtLeast(1)
             val framesPerBeat = rate.toDouble() * 60.0 / bpm.coerceIn(30, 300)
-            val beatIndex = floor(frame / framesPerBeat).toLong().coerceAtLeast(0L)
+            val audibleFrame = playbackAnchorFrame + playedFrames
+            val beatIndex = floor(audibleFrame / framesPerBeat).toLong().coerceAtLeast(0L)
 
             if (beatIndex != lastBeatIndex) {
                 lastBeatIndex = beatIndex
                 playBeat(beatIndex % 4L == 0L)
             }
-            metroHandler.postDelayed(this, 5L)
+            metroHandler.postDelayed(this, 2L)
         }
     }
 
@@ -227,6 +248,7 @@ class MainActivityV17 : MainActivityV16() {
     }
 
     private fun startBaseWithMetronome() {
+        playbackAnchorFrame = getBaseIntField("currentFrame").toLong().coerceAtLeast(0L)
         invokeBaseMethod("startPlayback")
         if (isBasePlaying()) {
             basePlayButton?.text = "❚❚ PAUSA"
@@ -238,6 +260,8 @@ class MainActivityV17 : MainActivityV16() {
 
     private fun startMetronome() {
         stopMetronomeTicks()
+        playbackAnchorFrame = getBaseIntField("currentFrame").toLong().coerceAtLeast(0L)
+        observedTrack = getBaseAudioTrack()
         lastBeatIndex = -1L
         metroHandler.post(metronomeTick)
     }
@@ -245,6 +269,7 @@ class MainActivityV17 : MainActivityV16() {
     private fun stopMetronomeTicks() {
         metroHandler.removeCallbacks(metronomeTick)
         lastBeatIndex = -1L
+        observedTrack = null
     }
 
     private fun cancelCountIn() {
@@ -290,6 +315,16 @@ class MainActivityV17 : MainActivityV16() {
             field.getInt(this)
         } catch (_: Exception) {
             0
+        }
+    }
+
+    private fun getBaseAudioTrack(): AudioTrack? {
+        return try {
+            val field = MainActivityV13::class.java.getDeclaredField("audioTrack")
+            field.isAccessible = true
+            field.get(this) as? AudioTrack
+        } catch (_: Exception) {
+            null
         }
     }
 
