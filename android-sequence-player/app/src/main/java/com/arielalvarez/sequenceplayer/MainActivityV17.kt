@@ -22,12 +22,14 @@ import kotlin.math.sin
 
 class MainActivityV17 : MainActivityV16() {
     private val metroHandler = Handler(Looper.getMainLooper())
+    private val bpmHandler = Handler(Looper.getMainLooper())
     private var toneGenerator: ToneGenerator? = null
     @Volatile private var metronomeEnabled = false
     @Volatile private var bpm = 100
     @Volatile private var metroVolume = 80
     private var countBars = 1
     private var countInRunning = false
+    private var activeBpmSongKey = ""
 
     private var basePlayButton: Button? = null
     private lateinit var metroToggle: Button
@@ -37,11 +39,26 @@ class MainActivityV17 : MainActivityV16() {
     private lateinit var count1: Button
     private lateinit var count2: Button
 
+    private val bpmWatcher = object : Runnable {
+        override fun run() {
+            if (::bpmInput.isInitialized) {
+                val key = currentSongBpmKey()
+                if (key.isNotEmpty() && key != activeBpmSongKey) {
+                    if (activeBpmSongKey.isNotEmpty()) saveBpmForKey(activeBpmSongKey)
+                    activeBpmSongKey = key
+                    loadBpmForKey(key)
+                }
+            }
+            bpmHandler.postDelayed(this, 150L)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installMetronomePanel()
         hookTransport()
         metroHandler.postDelayed({ removeEmptyClickStem() }, 350L)
+        bpmHandler.postDelayed(bpmWatcher, 200L)
     }
 
     private fun installMetronomePanel() {
@@ -161,7 +178,11 @@ class MainActivityV17 : MainActivityV16() {
         val newSongButton = buttons.firstOrNull { it.text.toString().trim() == "NUEVA" }
 
         newSongButton?.setOnClickListener {
+            if (activeBpmSongKey.isNotEmpty()) saveBpmForKey(activeBpmSongKey)
             invokeBaseMethod("newSong")
+            activeBpmSongKey = ""
+            bpm = 100
+            bpmInput.setText("100")
             metroHandler.postDelayed({ removeEmptyClickStem() }, 80L)
         }
 
@@ -242,6 +263,37 @@ class MainActivityV17 : MainActivityV16() {
         val parsed = bpmInput.text.toString().trim().toIntOrNull()
         bpm = (parsed ?: bpm).coerceIn(30, 300)
         bpmInput.setText(bpm.toString())
+        val key = currentSongBpmKey()
+        if (key.isNotEmpty()) {
+            activeBpmSongKey = key
+            saveBpmForKey(key)
+        }
+    }
+
+    private fun currentSongBpmKey(): String {
+        return try {
+            val field = MainActivityV13::class.java.getDeclaredField("titleInput")
+            field.isAccessible = true
+            val input = field.get(this) as? EditText
+            input?.text?.toString()?.trim().orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun saveBpmForKey(key: String) {
+        if (key.isBlank() || !::bpmInput.isInitialized) return
+        val value = (bpmInput.text.toString().trim().toIntOrNull() ?: bpm).coerceIn(30, 300)
+        bpm = value
+        getSharedPreferences("sequence_player_bpm_v17", MODE_PRIVATE)
+            .edit().putInt("bpm_$key", value).apply()
+    }
+
+    private fun loadBpmForKey(key: String) {
+        if (key.isBlank() || !::bpmInput.isInitialized) return
+        bpm = getSharedPreferences("sequence_player_bpm_v17", MODE_PRIVATE)
+            .getInt("bpm_$key", 100).coerceIn(30, 300)
+        bpmInput.setText(bpm.toString())
     }
 
     private fun recreateToneGenerator() {
@@ -311,6 +363,8 @@ class MainActivityV17 : MainActivityV16() {
     }
 
     override fun onDestroy() {
+        if (activeBpmSongKey.isNotEmpty()) saveBpmForKey(activeBpmSongKey)
+        bpmHandler.removeCallbacks(bpmWatcher)
         cancelCountIn()
         try { toneGenerator?.release() } catch (_: Exception) {}
         toneGenerator = null
