@@ -381,6 +381,8 @@ open class MainActivityV13 : Activity() {
 
     private fun closeReaders(readers:List<StreamReader>){readers.forEach{r->try{r.input.close()}catch(_:Exception){};try{r.pfd.close()}catch(_:Exception){}}}
 
+    protected open fun extraLeftSample(frameIndex:Int, rate:Int):Float = 0f
+
     private fun startAudioEngine(){
         val states=currentStems.toList();val infos=states.map{it.info?:return};val localGeneration=++audioGeneration
         val minBuffer=AudioTrack.getMinBufferSize(sampleRate,AudioFormat.CHANNEL_OUT_STEREO,AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(8192)
@@ -416,6 +418,7 @@ open class MainActivityV13 : Activity() {
                             if(offset+r.info.bytesPerFrame<=bytesRead[si]){var sum=0;var off=offset;repeat(r.info.channels){val lo=r.buffer[off].toInt() and 0xff;val hi=r.buffer[off+1].toInt();sum+=((hi shl 8) or lo).toShort().toInt();off+=2};sample=sum/r.info.channels}
                             val g=gain(state.volume,state.muted,state.solo,anySolo);val v=sample*g;val cue=state.name.contains("click",true)||state.name.contains("guía",true)||state.name.contains("guia",true);if(cue)left+=v else right+=v
                         }
+                        left += extraLeftSample(frame+i,sampleRate)
                         out[p++]=left.roundToInt().coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort();out[p++]=right.roundToInt().coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort()
                     }
                     if(track.write(out,0,frames*2,AudioTrack.WRITE_BLOCKING)<0)break;currentFrame+=frames
