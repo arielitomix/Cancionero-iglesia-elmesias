@@ -10,6 +10,10 @@
             android:screenOrientation="portrait" />
         <activity
             android:name=".MainActivityV13"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".MainActivityV15"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>
