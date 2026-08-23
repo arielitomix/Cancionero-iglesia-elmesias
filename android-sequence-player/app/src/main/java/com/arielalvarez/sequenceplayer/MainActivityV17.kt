@@ -6,7 +6,6 @@ import android.media.ToneGenerator
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -17,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import kotlin.math.floor
 
 class MainActivityV17 : MainActivityV16() {
     private val metroHandler = Handler(Looper.getMainLooper())
@@ -25,9 +25,8 @@ class MainActivityV17 : MainActivityV16() {
     private var bpm = 100
     private var metroVolume = 80
     private var countBars = 1
-    private var metroBeat = 0
-    private var nextBeatAt = 0L
     private var countInRunning = false
+    private var lastBeatIndex = -1L
 
     private var basePlayButton: Button? = null
     private lateinit var metroToggle: Button
@@ -40,12 +39,17 @@ class MainActivityV17 : MainActivityV16() {
     private val metronomeTick = object : Runnable {
         override fun run() {
             if (!metronomeEnabled || !isBasePlaying()) return
-            playBeat(metroBeat % 4 == 0)
-            metroBeat = (metroBeat + 1) % 4
-            val interval = beatIntervalMs()
-            nextBeatAt += interval
-            val delay = (nextBeatAt - SystemClock.uptimeMillis()).coerceAtLeast(1L)
-            metroHandler.postDelayed(this, delay)
+
+            val frame = getBaseIntField("currentFrame")
+            val rate = getBaseIntField("sampleRate").coerceAtLeast(1)
+            val framesPerBeat = rate.toDouble() * 60.0 / bpm.coerceIn(30, 300)
+            val beatIndex = floor(frame / framesPerBeat).toLong().coerceAtLeast(0L)
+
+            if (beatIndex != lastBeatIndex) {
+                lastBeatIndex = beatIndex
+                playBeat(beatIndex % 4L == 0L)
+            }
+            metroHandler.postDelayed(this, 5L)
         }
     }
 
@@ -53,6 +57,7 @@ class MainActivityV17 : MainActivityV16() {
         super.onCreate(savedInstanceState)
         installMetronomePanel()
         hookTransport()
+        metroHandler.postDelayed({ removeEmptyClickStem() }, 350L)
     }
 
     private fun installMetronomePanel() {
@@ -135,9 +140,9 @@ class MainActivityV17 : MainActivityV16() {
         panel.addView(volRow)
 
         val countRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        count0 = countButton("SIN CUENTA", 0, dp(4))
-        count1 = countButton("1 COMPÁS", 1, dp(4))
-        count2 = countButton("2 COMPASES", 2, 0)
+        count0 = countButton("SIN CUENTA", 0)
+        count1 = countButton("1 COMPÁS", 1)
+        count2 = countButton("2 COMPASES", 2)
         countRow.addView(count0, LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(4) })
         countRow.addView(count1, LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(4) })
         countRow.addView(count2, LinearLayout.LayoutParams(0, dp(42), 1f))
@@ -149,7 +154,7 @@ class MainActivityV17 : MainActivityV16() {
         recreateToneGenerator()
     }
 
-    private fun countButton(label: String, bars: Int, margin: Int): Button = Button(this).apply {
+    private fun countButton(label: String, bars: Int): Button = Button(this).apply {
         text = label
         setOnClickListener {
             countBars = bars
@@ -170,10 +175,17 @@ class MainActivityV17 : MainActivityV16() {
         collectButtons(findViewById(android.R.id.content), buttons)
         basePlayButton = buttons.firstOrNull { it.text.toString().contains("PLAY") || it.text.toString().contains("PAUSA") }
         val stopButton = buttons.firstOrNull { it.text.toString().contains("STOP") }
+        val newSongButton = buttons.firstOrNull { it.text.toString().trim() == "NUEVA" }
+
+        newSongButton?.setOnClickListener {
+            invokeBaseMethod("newSong")
+            metroHandler.postDelayed({ removeEmptyClickStem() }, 80L)
+        }
 
         basePlayButton?.setOnClickListener {
             if (countInRunning) return@setOnClickListener
             applyBpmFromInput()
+            removeEmptyClickStem()
             if (isBasePlaying()) {
                 invokeBaseMethod("pausePlayback")
                 stopMetronomeTicks()
@@ -216,20 +228,23 @@ class MainActivityV17 : MainActivityV16() {
 
     private fun startBaseWithMetronome() {
         invokeBaseMethod("startPlayback")
-        basePlayButton?.text = "❚❚ PAUSA"
-        if (metronomeEnabled) startMetronome()
+        if (isBasePlaying()) {
+            basePlayButton?.text = "❚❚ PAUSA"
+            if (metronomeEnabled) startMetronome()
+        } else {
+            basePlayButton?.text = "▶ PLAY"
+        }
     }
 
     private fun startMetronome() {
         stopMetronomeTicks()
-        metroBeat = 0
-        nextBeatAt = SystemClock.uptimeMillis()
+        lastBeatIndex = -1L
         metroHandler.post(metronomeTick)
     }
 
     private fun stopMetronomeTicks() {
         metroHandler.removeCallbacks(metronomeTick)
-        metroBeat = 0
+        lastBeatIndex = -1L
     }
 
     private fun cancelCountIn() {
@@ -244,6 +259,7 @@ class MainActivityV17 : MainActivityV16() {
         val parsed = bpmInput.text.toString().trim().toIntOrNull()
         bpm = (parsed ?: bpm).coerceIn(30, 300)
         bpmInput.setText(bpm.toString())
+        if (metronomeEnabled && isBasePlaying()) startMetronome()
     }
 
     private fun recreateToneGenerator() {
@@ -267,6 +283,16 @@ class MainActivityV17 : MainActivityV16() {
         }
     }
 
+    private fun getBaseIntField(name: String): Int {
+        return try {
+            val field = MainActivityV13::class.java.getDeclaredField(name)
+            field.isAccessible = true
+            field.getInt(this)
+        } catch (_: Exception) {
+            0
+        }
+    }
+
     private fun invokeBaseMethod(name: String) {
         try {
             val method = MainActivityV13::class.java.getDeclaredMethod(name)
@@ -274,6 +300,34 @@ class MainActivityV17 : MainActivityV16() {
             method.invoke(this)
         } catch (e: Exception) {
             Toast.makeText(this, "No se pudo ejecutar $name", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun removeEmptyClickStem() {
+        try {
+            val listField = MainActivityV13::class.java.getDeclaredField("currentStems")
+            listField.isAccessible = true
+            @Suppress("UNCHECKED_CAST")
+            val list = listField.get(this) as MutableList<Any>
+            val iterator = list.iterator()
+            var removed = false
+            while (iterator.hasNext()) {
+                val stem = iterator.next()
+                val clazz = stem.javaClass
+                val nameField = clazz.getDeclaredField("name").apply { isAccessible = true }
+                val uriField = clazz.getDeclaredField("uri").apply { isAccessible = true }
+                val name = nameField.get(stem)?.toString().orEmpty()
+                val uri = uriField.get(stem) as? String
+                if (name.equals("Click", ignoreCase = true) && uri.isNullOrBlank()) {
+                    iterator.remove()
+                    removed = true
+                }
+            }
+            if (removed) {
+                invokeBaseMethod("renderStemRows")
+                invokeBaseMethod("validateLoadedStems")
+            }
+        } catch (_: Exception) {
         }
     }
 
