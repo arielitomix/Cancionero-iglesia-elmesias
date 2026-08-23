@@ -125,16 +125,9 @@ class MainActivityV14 : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (!::childActivity.isInitialized) return
+        if (!::localManager.isInitialized) return
         try {
-            val method = childActivity.javaClass.getDeclaredMethod(
-                "onActivityResult",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Intent::class.java
-            )
-            method.isAccessible = true
-            method.invoke(childActivity, requestCode and 0xffff, resultCode, data)
+            localManager.dispatchActivityResult("player13", requestCode and 0xffff, resultCode, data)
         } catch (e: Exception) {
             Toast.makeText(this, "No se pudo entregar el archivo al stem", Toast.LENGTH_SHORT).show()
         }
