@@ -379,8 +379,7 @@ class MainActivityV11 : Activity() {
         }
 
         loadingSong = true; updateControls(); renderStemRows()
-        statusView.text = "Cargando ${song.title}… preparando también la siguiente."
-        preloadNextSong(index)
+        statusView.text = "Cargando ${song.title}…"
         Thread {
             try {
                 val loaded = loadSongStems(song)
@@ -389,8 +388,9 @@ class MainActivityV11 : Activity() {
                     currentStems.forEachIndexed { i, stem -> stem.loaded = loaded[i] }
                     loadingSong = false
                     renderStemRows(); validateLoadedStems()
-                    statusView.text = "${song.title} lista."
+                    statusView.text = "${song.title} lista. Preparando siguiente…"
                     getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(LAST_SONG_KEY, index).apply()
+                    preloadNextSong(index)
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -433,6 +433,7 @@ class MainActivityV11 : Activity() {
                     }
                 }
             } catch (_: Exception) {
+                // La canción actual sigue usable aunque falle la precarga.
             }
         }.apply { name = "SequencePreload11"; priority = Thread.NORM_PRIORITY - 1; start() }
     }
