@@ -123,6 +123,23 @@ class MainActivityV14 : Activity() {
         handler.post(sectionUpdater)
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (!::childActivity.isInitialized) return
+        try {
+            val method = childActivity.javaClass.getDeclaredMethod(
+                "onActivityResult",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                Intent::class.java
+            )
+            method.isAccessible = true
+            method.invoke(childActivity, requestCode and 0xffff, resultCode, data)
+        } catch (e: Exception) {
+            Toast.makeText(this, "No se pudo entregar el archivo al stem", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun promptAddSection() {
         val bar = seekBar ?: return
         if (bar.max <= 1) {
