@@ -20,7 +20,7 @@ import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 
-class MainActivityV16 : MainActivityV13() {
+open class MainActivityV16 : MainActivityV13() {
     private data class SectionMarker(val name: String, val ms: Int)
 
     private lateinit var sectionList: LinearLayout
