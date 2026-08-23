@@ -32,7 +32,7 @@ import java.io.FileInputStream
 import java.io.InputStream
 import kotlin.math.roundToInt
 
-class MainActivityV13 : Activity() {
+open class MainActivityV13 : Activity() {
     companion object {
         private const val PICK_STEM = 3001
         private const val PREFS = "sequence_player_v08"
