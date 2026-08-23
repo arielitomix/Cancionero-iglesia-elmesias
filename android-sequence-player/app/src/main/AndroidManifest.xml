@@ -5,7 +5,7 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity
-            android:name=".MainActivityV12"
+            android:name=".MainActivityV13"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>
