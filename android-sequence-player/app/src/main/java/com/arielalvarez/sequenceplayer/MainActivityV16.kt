@@ -25,6 +25,7 @@ open class MainActivityV16 : MainActivityV13() {
 
     private lateinit var sectionList: LinearLayout
     private lateinit var currentSectionView: TextView
+    private lateinit var preciseTimeView: TextView
     private lateinit var sectionLoopButton: Button
     private var timeline: SeekBar? = null
     private var songSpinner: Spinner? = null
@@ -39,6 +40,7 @@ open class MainActivityV16 : MainActivityV13() {
     private val sectionUpdater = object : Runnable {
         override fun run() {
             updateCurrentSection()
+            updatePreciseTime()
             enforceSectionLoop()
             sectionHandler.postDelayed(this, 40)
         }
@@ -68,11 +70,11 @@ open class MainActivityV16 : MainActivityV13() {
 
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(7), dp(12), dp(8))
+            setPadding(dp(12), dp(5), dp(12), dp(7))
             setBackgroundColor(Color.rgb(20, 20, 20))
         }
         panel.addView(TextView(this).apply {
-            text = "SEQUENCE PLAYER · 0.16 · LOOP POR SECCIÓN"
+            text = "SEQUENCE PLAYER · MARCADORES PRECISOS + LOOP"
             setTextColor(Color.rgb(145,160,178))
             textSize = 11f
         })
@@ -86,16 +88,34 @@ open class MainActivityV16 : MainActivityV13() {
             setTextColor(Color.WHITE)
             textSize = 15f
         }
-        header.addView(currentSectionView, LinearLayout.LayoutParams(0, dp(42), 1f))
+        header.addView(currentSectionView, LinearLayout.LayoutParams(0, dp(40), 1f))
         header.addView(Button(this).apply {
             text = "+ MARCAR"
             setOnClickListener { promptAddSection() }
-        }, LinearLayout.LayoutParams(dp(112), dp(42)))
+        }, LinearLayout.LayoutParams(dp(112), dp(40)))
         panel.addView(header)
 
-        val scroller = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
+        preciseTimeView = TextView(this).apply {
+            text = "POSICIÓN  0:00.000"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            gravity = Gravity.CENTER
         }
+        panel.addView(preciseTimeView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
+
+        val fineRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val controls = listOf("−1 s" to -1000, "−0.1 s" to -100, "+0.1 s" to 100, "+1 s" to 1000)
+        controls.forEachIndexed { index, item ->
+            fineRow.addView(Button(this).apply {
+                text = item.first
+                setOnClickListener { nudge(item.second) }
+            }, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                if (index < controls.lastIndex) marginEnd = dp(3)
+            })
+        }
+        panel.addView(fineRow)
+
+        val scroller = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         sectionList = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -109,7 +129,7 @@ open class MainActivityV16 : MainActivityV13() {
         }
         panel.addView(sectionLoopButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
 
-        wrapper.addView(panel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(160)))
+        wrapper.addView(panel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(230)))
         contentRoot.addView(wrapper, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         val seekBars = mutableListOf<SeekBar>()
@@ -133,6 +153,13 @@ open class MainActivityV16 : MainActivityV13() {
         }
 
         renderSections()
+        updatePreciseTime()
+    }
+
+    private fun nudge(deltaMs: Int) {
+        val bar = timeline ?: return
+        if (bar.max <= 1) return
+        jumpTo((bar.progress + deltaMs).coerceIn(0, bar.max))
     }
 
     private fun promptAddSection() {
@@ -146,7 +173,7 @@ open class MainActivityV16 : MainActivityV13() {
             setSingleLine(true)
         }
         AlertDialog.Builder(this)
-            .setTitle("Marcar sección en ${formatTime(bar.progress)}")
+            .setTitle("Marcar sección en ${formatTimePrecise(bar.progress)}")
             .setView(input)
             .setPositiveButton("GUARDAR") { _, _ ->
                 val name = input.text.toString().trim()
@@ -171,7 +198,7 @@ open class MainActivityV16 : MainActivityV13() {
 
         if (markers.isEmpty()) {
             sectionList.addView(TextView(this).apply {
-                text = "Mueve la barra y toca + MARCAR"
+                text = "Mueve la barra, afina el tiempo y toca + MARCAR"
                 setTextColor(Color.rgb(160,160,160))
                 gravity = Gravity.CENTER_VERTICAL
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)))
@@ -181,7 +208,7 @@ open class MainActivityV16 : MainActivityV13() {
 
         markers.forEach { marker ->
             sectionList.addView(Button(this).apply {
-                text = "${marker.name}  ${formatTime(marker.ms)}"
+                text = "${marker.name}  ${formatTimePrecise(marker.ms)}"
                 setOnClickListener {
                     jumpTo(marker.ms)
                     if (sectionLoopEnabled) activateLoopForPosition(marker.ms)
@@ -246,10 +273,7 @@ open class MainActivityV16 : MainActivityV13() {
             return
         }
         val bar = timeline ?: return
-        val pos = bar.progress
-        if (pos >= loopEndMs - 35) {
-            jumpTo(loopStartMs)
-        }
+        if (bar.progress >= loopEndMs - 35) jumpTo(loopStartMs)
     }
 
     private fun disableSectionLoop() {
@@ -269,9 +293,15 @@ open class MainActivityV16 : MainActivityV13() {
             method.invoke(this, target)
             bar.progress = target
             updateCurrentSection()
+            updatePreciseTime()
         } catch (_: Exception) {
-            Toast.makeText(this, "No se pudo saltar a la sección", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No se pudo mover a esa posición", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun updatePreciseTime() {
+        if (!::preciseTimeView.isInitialized) return
+        preciseTimeView.text = "POSICIÓN  ${formatTimePrecise(timeline?.progress ?: 0)}"
     }
 
     private fun updateCurrentSection() {
@@ -322,9 +352,12 @@ open class MainActivityV16 : MainActivityV13() {
         }
     }
 
-    private fun formatTime(ms: Int): String {
-        val sec = (ms / 1000).coerceAtLeast(0)
-        return "%d:%02d".format(sec / 60, sec % 60)
+    private fun formatTimePrecise(ms: Int): String {
+        val safe = ms.coerceAtLeast(0)
+        val min = safe / 60000
+        val sec = (safe % 60000) / 1000
+        val milli = safe % 1000
+        return "%d:%02d.%03d".format(min, sec, milli)
     }
 
     override fun onDestroy() {
