@@ -95,6 +95,7 @@ open class MainActivityV17 : MainActivityV16() {
 
     open fun beatsPerBar():Int=4
     open fun beatUnitFactor():Double=1.0
+    override fun quantizedBarDurationMs(): Int = (60000.0 / bpm.coerceIn(30,300) * beatUnitFactor() * beatsPerBar()).toInt().coerceAtLeast(100)
     protected open fun onSongKeyChanged(key:String){}
     protected open fun onNewSongCreated(){}
 
