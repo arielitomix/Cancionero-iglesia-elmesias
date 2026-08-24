@@ -4,24 +4,13 @@
         android:label="Sequence Player"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        <activity android:name=".MainActivityV14" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".MainActivityV13" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".MainActivityV15" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".MainActivityV16" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".MainActivityV17" android:exported="false" android:screenOrientation="portrait" />
         <activity
-            android:name=".MainActivityV14"
-            android:exported="false"
-            android:screenOrientation="portrait" />
-        <activity
-            android:name=".MainActivityV13"
-            android:exported="false"
-            android:screenOrientation="portrait" />
-        <activity
-            android:name=".MainActivityV15"
-            android:exported="false"
-            android:screenOrientation="portrait" />
-        <activity
-            android:name=".MainActivityV16"
-            android:exported="false"
-            android:screenOrientation="portrait" />
-        <activity
-            android:name=".MainActivityV17"
+            android:name=".MainActivityV18"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>
