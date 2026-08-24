@@ -119,6 +119,7 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
             if (songs.isEmpty()) {
                 indexField.setInt(this, -1)
                 invokeBase("newSong")
+                guideHandler.postDelayed({ removeEmptyClickNow() }, 80L)
             } else {
                 val nextIndex = index.coerceAtMost(songs.lastIndex)
                 indexField.setInt(this, nextIndex)
@@ -128,6 +129,14 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         } catch (e: Exception) {
             Toast.makeText(this, "No se pudo borrar la canción", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun removeEmptyClickNow() {
+        try {
+            val method = MainActivityV17::class.java.getDeclaredMethod("removeEmptyClickStem")
+            method.isAccessible = true
+            method.invoke(this)
+        } catch (_: Exception) {}
     }
 
     private fun invokeBase(name: String, intArg: Int? = null) {
