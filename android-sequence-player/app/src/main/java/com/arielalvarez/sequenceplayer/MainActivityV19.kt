@@ -29,6 +29,10 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private var lastSong = ""
     private var announcedMarkerKey = ""
 
+    private var queuedGuideName = ""
+    private var queuedGuideTriggerMs = -1
+    private var queuedGuideAnnounced = false
+
     private val guideWatcher = object : Runnable {
         override fun run() {
             updateGuide()
@@ -66,6 +70,7 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
             setOnClickListener {
                 guideEnabled=!guideEnabled
                 announcedMarkerKey=""
+                queuedGuideAnnounced=false
                 text=if(guideEnabled)"GUÍA AUTO: ON" else "GUÍA AUTO: OFF"
                 guideStatus.text=if(guideEnabled)"GUÍA: avisará 1 compás antes" else "GUÍA: apagada"
             }
@@ -114,6 +119,7 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
             invokeBase("saveSongLibrary")
             invokeBase("refreshSongSpinner")
             announcedMarkerKey = ""
+            clearQueuedGuide()
             tts?.stop()
 
             if (songs.isEmpty()) {
@@ -158,11 +164,28 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private fun updateGuide() {
         if (!guideEnabled || !ttsReady) return
         val song=currentSongKey()
-        if(song!=lastSong){lastSong=song;announcedMarkerKey="";tts?.stop()}
+        if(song!=lastSong){
+            lastSong=song
+            announcedMarkerKey=""
+            clearQueuedGuide()
+            tts?.stop()
+        }
+
         val pos=timeline?.progress?:return
+        val barMs=(60000.0/bpm.coerceIn(30,300)*beatUnitFactor()*beatsPerBar()).toInt().coerceAtLeast(100)
+
+        if (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank()) {
+            val delta = queuedGuideTriggerMs - pos
+            guideStatus.text = "SALTO: $queuedGuideName"
+            if (delta in 0..barMs && !queuedGuideAnnounced) {
+                queuedGuideAnnounced = true
+                speakSection(queuedGuideName)
+            }
+            return
+        }
+
         val markers=loadMarkers()
         if(markers.isEmpty())return
-        val barMs=(60000.0/bpm.coerceIn(30,300)*beatUnitFactor()*beatsPerBar()).toInt().coerceAtLeast(100)
         val next=markers.firstOrNull{it.ms>pos}?:return
         val key="$song|${next.name}|${next.ms}"
         val delta=next.ms-pos
@@ -171,6 +194,31 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
             guideStatus.text="SIGUE: ${next.name}"
             speakSection(next.name)
         }
+    }
+
+    override fun onSectionJumpQueued(name: String, triggerMs: Int) {
+        queuedGuideName = name
+        queuedGuideTriggerMs = triggerMs
+        queuedGuideAnnounced = false
+        if (::guideStatus.isInitialized) guideStatus.text = "SALTO: $name al final de sección"
+    }
+
+    override fun onSectionJumpCancelled() {
+        clearQueuedGuide()
+        if (::guideStatus.isInitialized && guideEnabled) guideStatus.text = "GUÍA: salto cancelado"
+        tts?.stop()
+    }
+
+    override fun onSectionJumpExecuted(name: String) {
+        clearQueuedGuide()
+        announcedMarkerKey = ""
+        if (::guideStatus.isInitialized && guideEnabled) guideStatus.text = "ENTRANDO: $name"
+    }
+
+    private fun clearQueuedGuide() {
+        queuedGuideName = ""
+        queuedGuideTriggerMs = -1
+        queuedGuideAnnounced = false
     }
 
     private fun speakSection(name:String){
