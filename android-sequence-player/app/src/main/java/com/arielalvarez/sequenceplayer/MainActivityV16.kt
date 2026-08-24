@@ -19,6 +19,7 @@ import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.floor
 
 open class MainActivityV16 : MainActivityV13() {
     private data class SectionMarker(val name: String, val ms: Int)
@@ -37,12 +38,18 @@ open class MainActivityV16 : MainActivityV13() {
     private var loopSectionName = ""
     private var lastSongKey = ""
 
+    private var pendingJumpMs: Int? = null
+    private var pendingJumpName = ""
+    private var pendingJumpTriggerMs = 0
+    private var pendingJumpActivateLoop = false
+
     private val sectionUpdater = object : Runnable {
         override fun run() {
             updateCurrentSection()
             updatePreciseTime()
             enforceSectionLoop()
-            sectionHandler.postDelayed(this, 40)
+            enforcePendingJump()
+            sectionHandler.postDelayed(this, 20)
         }
     }
 
@@ -56,7 +63,6 @@ open class MainActivityV16 : MainActivityV13() {
     private fun installSectionPanel() {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
-
         val contentRoot = findViewById<ViewGroup>(android.R.id.content)
         if (contentRoot.childCount == 0) return
         val playerView = contentRoot.getChildAt(0)
@@ -135,11 +141,9 @@ open class MainActivityV16 : MainActivityV13() {
         val seekBars = mutableListOf<SeekBar>()
         collectViews(playerView, SeekBar::class.java, seekBars)
         timeline = seekBars.firstOrNull { it.max != 100 }
-
         val spinners = mutableListOf<Spinner>()
         collectViews(playerView, Spinner::class.java, spinners)
         songSpinner = spinners.firstOrNull()
-
         val edits = mutableListOf<EditText>()
         collectViews(playerView, EditText::class.java, edits)
         titleInput = edits.firstOrNull()
@@ -147,6 +151,7 @@ open class MainActivityV16 : MainActivityV13() {
         songSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 disableSectionLoop()
+                cancelPendingJump(false)
                 sectionHandler.postDelayed({ renderSections() }, 200)
             }
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -159,6 +164,7 @@ open class MainActivityV16 : MainActivityV13() {
     private fun nudge(deltaMs: Int) {
         val bar = timeline ?: return
         if (bar.max <= 1) return
+        cancelPendingJump(false)
         jumpTo((bar.progress + deltaMs).coerceIn(0, bar.max))
     }
 
@@ -209,10 +215,7 @@ open class MainActivityV16 : MainActivityV13() {
         markers.forEach { marker ->
             sectionList.addView(Button(this).apply {
                 text = "${marker.name}  ${formatTimePrecise(marker.ms)}"
-                setOnClickListener {
-                    jumpTo(marker.ms)
-                    if (sectionLoopEnabled) activateLoopForPosition(marker.ms)
-                }
+                setOnClickListener { requestSectionJump(marker) }
                 setOnLongClickListener {
                     AlertDialog.Builder(this@MainActivityV16)
                         .setTitle("Eliminar ${marker.name}")
@@ -222,6 +225,7 @@ open class MainActivityV16 : MainActivityV13() {
                             if (idx >= 0) updated.removeAt(idx)
                             saveSections(updated)
                             disableSectionLoop()
+                            cancelPendingJump(false)
                             renderSections()
                         }
                         .setNegativeButton("CANCELAR", null)
@@ -231,6 +235,76 @@ open class MainActivityV16 : MainActivityV13() {
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { marginEnd = dp(5) })
         }
         updateCurrentSection()
+    }
+
+    private fun requestSectionJump(marker: SectionMarker) {
+        if (!isBasePlaying()) {
+            cancelPendingJump(false)
+            jumpTo(marker.ms)
+            if (sectionLoopEnabled) activateLoopForPosition(marker.ms)
+            return
+        }
+
+        if (pendingJumpMs == marker.ms) {
+            cancelPendingJump(true)
+            return
+        }
+
+        val barDuration = quantizedBarDurationMs()
+        if (barDuration <= 0) {
+            jumpTo(marker.ms)
+            if (sectionLoopEnabled) activateLoopForPosition(marker.ms)
+            return
+        }
+
+        val now = timeline?.progress ?: 0
+        val nextBar = ((floor(now.toDouble() / barDuration).toInt() + 1) * barDuration)
+        pendingJumpMs = marker.ms
+        pendingJumpName = marker.name
+        pendingJumpTriggerMs = nextBar.coerceAtMost(timeline?.max ?: nextBar)
+        pendingJumpActivateLoop = sectionLoopEnabled
+        currentSectionView.text = "→ ${marker.name.uppercase()} · SIG. COMPÁS"
+        Toast.makeText(this, "${marker.name} preparado para el siguiente compás", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun enforcePendingJump() {
+        val target = pendingJumpMs ?: return
+        if (!isBasePlaying()) {
+            cancelPendingJump(false)
+            return
+        }
+        val pos = timeline?.progress ?: return
+        if (pos >= pendingJumpTriggerMs - 25) {
+            val activateLoop = pendingJumpActivateLoop
+            val name = pendingJumpName
+            pendingJumpMs = null
+            pendingJumpName = ""
+            pendingJumpTriggerMs = 0
+            pendingJumpActivateLoop = false
+            jumpTo(target)
+            if (activateLoop) activateLoopForPosition(target)
+            Toast.makeText(this, "Entrando a $name", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun cancelPendingJump(showToast: Boolean) {
+        if (pendingJumpMs != null && showToast) Toast.makeText(this, "Salto cancelado", Toast.LENGTH_SHORT).show()
+        pendingJumpMs = null
+        pendingJumpName = ""
+        pendingJumpTriggerMs = 0
+        pendingJumpActivateLoop = false
+    }
+
+    protected open fun quantizedBarDurationMs(): Int = 0
+
+    private fun isBasePlaying(): Boolean {
+        return try {
+            val field = MainActivityV13::class.java.getDeclaredField("playing")
+            field.isAccessible = true
+            field.getBoolean(this)
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun toggleSectionLoop() {
@@ -270,6 +344,7 @@ open class MainActivityV16 : MainActivityV13() {
         if (key != lastSongKey) {
             lastSongKey = key
             disableSectionLoop()
+            cancelPendingJump(false)
             return
         }
         val bar = timeline ?: return
@@ -306,6 +381,10 @@ open class MainActivityV16 : MainActivityV13() {
 
     private fun updateCurrentSection() {
         if (!::currentSectionView.isInitialized) return
+        if (pendingJumpMs != null) {
+            currentSectionView.text = "→ ${pendingJumpName.uppercase()} · SIG. COMPÁS"
+            return
+        }
         val pos = timeline?.progress ?: 0
         val marker = loadSections().filter { it.ms <= pos }.maxByOrNull { it.ms }
         currentSectionView.text = if (marker == null) "SECCIÓN: —" else "SECCIÓN: ${marker.name}"
@@ -361,6 +440,7 @@ open class MainActivityV16 : MainActivityV13() {
     }
 
     override fun onDestroy() {
+        cancelPendingJump(false)
         sectionHandler.removeCallbacks(sectionUpdater)
         super.onDestroy()
     }
