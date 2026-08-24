@@ -19,7 +19,6 @@ import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
-import kotlin.math.floor
 
 open class MainActivityV16 : MainActivityV13() {
     private data class SectionMarker(val name: String, val ms: Int)
@@ -250,21 +249,32 @@ open class MainActivityV16 : MainActivityV13() {
             return
         }
 
-        val barDuration = quantizedBarDurationMs()
-        if (barDuration <= 0) {
+        val now = timeline?.progress ?: 0
+        val markers = loadSections().sortedBy { it.ms }
+        if (markers.isEmpty()) {
+            jumpTo(marker.ms)
+            return
+        }
+
+        val currentIndex = markers.indexOfLast { it.ms <= now }
+        val sectionEnd = when {
+            currentIndex < 0 -> markers.first().ms
+            currentIndex < markers.lastIndex -> markers[currentIndex + 1].ms
+            else -> timeline?.max ?: now
+        }
+        if (sectionEnd <= now + 20) {
             jumpTo(marker.ms)
             if (sectionLoopEnabled) activateLoopForPosition(marker.ms)
             return
         }
 
-        val now = timeline?.progress ?: 0
-        val nextBar = ((floor(now.toDouble() / barDuration).toInt() + 1) * barDuration)
         pendingJumpMs = marker.ms
         pendingJumpName = marker.name
-        pendingJumpTriggerMs = nextBar.coerceAtMost(timeline?.max ?: nextBar)
+        pendingJumpTriggerMs = sectionEnd
         pendingJumpActivateLoop = sectionLoopEnabled
-        currentSectionView.text = "→ ${marker.name.uppercase()} · SIG. COMPÁS"
-        Toast.makeText(this, "${marker.name} preparado para el siguiente compás", Toast.LENGTH_SHORT).show()
+        currentSectionView.text = "→ ${marker.name.uppercase()} · FIN DE SECCIÓN"
+        onSectionJumpQueued(marker.name, sectionEnd)
+        Toast.makeText(this, "${marker.name} preparado al terminar la sección", Toast.LENGTH_SHORT).show()
     }
 
     private fun enforcePendingJump() {
@@ -283,19 +293,25 @@ open class MainActivityV16 : MainActivityV13() {
             pendingJumpActivateLoop = false
             jumpTo(target)
             if (activateLoop) activateLoopForPosition(target)
+            onSectionJumpExecuted(name)
             Toast.makeText(this, "Entrando a $name", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun cancelPendingJump(showToast: Boolean) {
-        if (pendingJumpMs != null && showToast) Toast.makeText(this, "Salto cancelado", Toast.LENGTH_SHORT).show()
+        val hadPending = pendingJumpMs != null
+        if (hadPending && showToast) Toast.makeText(this, "Salto cancelado", Toast.LENGTH_SHORT).show()
         pendingJumpMs = null
         pendingJumpName = ""
         pendingJumpTriggerMs = 0
         pendingJumpActivateLoop = false
+        if (hadPending) onSectionJumpCancelled()
     }
 
     protected open fun quantizedBarDurationMs(): Int = 0
+    protected open fun onSectionJumpQueued(name: String, triggerMs: Int) = Unit
+    protected open fun onSectionJumpCancelled() = Unit
+    protected open fun onSectionJumpExecuted(name: String) = Unit
 
     private fun isBasePlaying(): Boolean {
         return try {
@@ -382,7 +398,7 @@ open class MainActivityV16 : MainActivityV13() {
     private fun updateCurrentSection() {
         if (!::currentSectionView.isInitialized) return
         if (pendingJumpMs != null) {
-            currentSectionView.text = "→ ${pendingJumpName.uppercase()} · SIG. COMPÁS"
+            currentSectionView.text = "→ ${pendingJumpName.uppercase()} · FIN DE SECCIÓN"
             return
         }
         val pos = timeline?.progress ?: 0
