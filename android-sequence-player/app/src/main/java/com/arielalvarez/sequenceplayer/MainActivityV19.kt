@@ -19,7 +19,7 @@ import android.widget.Toast
 import org.json.JSONArray
 import java.util.Locale
 
-class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
+open class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private data class Marker(val name: String, val ms: Int)
     private val guideHandler = Handler(Looper.getMainLooper())
     private var guideEnabled = false
