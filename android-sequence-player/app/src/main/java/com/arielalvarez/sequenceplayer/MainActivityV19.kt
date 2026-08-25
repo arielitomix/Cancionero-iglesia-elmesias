@@ -33,10 +33,13 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private var queuedGuideName = ""
     private var queuedGuideTriggerMs = -1
     private var queuedGuideAnnounced = false
+    private var liveRequestToken = 0
+    private var liveTransportToken = 0
 
     private val guideWatcher = object : Runnable {
         override fun run() {
             updateGuide()
+            updateLiveBridge()
             guideHandler.postDelayed(this, 40L)
         }
     }
@@ -88,6 +91,8 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         val button = Button(this).apply {
             text = "🎵 MODO EN VIVO"
             setOnClickListener {
+                LiveModeBridge.positionMs = timeline?.progress ?: 0
+                LiveModeBridge.pendingSectionName = ""
                 val intent = Intent(this@MainActivityV19, LiveModeActivity::class.java)
                 intent.putExtra("song", currentSongKey())
                 startActivity(intent)
@@ -99,6 +104,50 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
             bottomMargin = dp(8)
         }
         root.addView(button, params)
+    }
+
+    private fun updateLiveBridge() {
+        LiveModeBridge.positionMs = timeline?.progress ?: 0
+        LiveModeBridge.pendingSectionName = queuedGuideName
+
+        if (LiveModeBridge.requestToken != liveRequestToken) {
+            liveRequestToken = LiveModeBridge.requestToken
+            val name = LiveModeBridge.requestedSectionName
+            val ms = LiveModeBridge.requestedSectionMs
+            if (name.isNotBlank() && ms >= 0) requestLiveSection(name, ms)
+        }
+
+        if (LiveModeBridge.transportToken != liveTransportToken) {
+            liveTransportToken = LiveModeBridge.transportToken
+            when (LiveModeBridge.transportCommand) {
+                "toggle" -> toggleLivePlayback()
+                "stop" -> invokeBase("stopPlayback")
+            }
+        }
+    }
+
+    private fun requestLiveSection(name: String, ms: Int) {
+        try {
+            val markerClass = Class.forName("com.arielalvarez.sequenceplayer.MainActivityV16\$SectionMarker")
+            val constructor = markerClass.getDeclaredConstructor(String::class.java, Int::class.javaPrimitiveType)
+            constructor.isAccessible = true
+            val marker = constructor.newInstance(name, ms)
+            val method = MainActivityV16::class.java.getDeclaredMethod("requestSectionJump", markerClass)
+            method.isAccessible = true
+            method.invoke(this, marker)
+        } catch (_: Exception) {
+            Toast.makeText(this, "No se pudo preparar esa sección", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun toggleLivePlayback() {
+        try {
+            val field = MainActivityV13::class.java.getDeclaredField("playing")
+            field.isAccessible = true
+            if (field.getBoolean(this)) invokeBase("pausePlayback") else invokeBase("startPlayback")
+        } catch (_: Exception) {
+            Toast.makeText(this, "No se pudo cambiar la reproducción", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun confirmDeleteSong(){val title=currentSongKey().ifBlank{"esta canción"};AlertDialog.Builder(this).setTitle("Borrar canción").setMessage("¿Seguro que quieres borrar “$title” del setlist?").setPositiveButton("BORRAR"){_,_->deleteSelectedSong()}.setNegativeButton("CANCELAR",null).show()}
@@ -118,12 +167,8 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         }
         val pos = timeline?.progress ?: return
         val barMs = quantizedBarDurationMs().coerceAtLeast(100)
-
-        if (lastGuidePos >= 0 && pos < lastGuidePos - 250) {
-            announcedMarkers.clear()
-        }
+        if (lastGuidePos >= 0 && pos < lastGuidePos - 250) announcedMarkers.clear()
         lastGuidePos = pos
-
         if (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank()) {
             val announceAt = (queuedGuideTriggerMs - barMs).coerceAtLeast(0)
             guideStatus.text = "SALTO: $queuedGuideName"
@@ -133,16 +178,13 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
             }
             return
         }
-
         val markers = loadMarkers()
         if (markers.isEmpty()) return
         markers.forEach { marker ->
             val key = "$song|${marker.name}|${marker.ms}"
             if (key in announcedMarkers) return@forEach
             val announceAt = (marker.ms - barMs).coerceAtLeast(0)
-            val crossedWindow = pos >= announceAt && pos < marker.ms
-            val watcherSkippedAcrossStart = lastGuidePos >= marker.ms && pos >= marker.ms && pos - marker.ms <= 180
-            if (crossedWindow || watcherSkippedAcrossStart) {
+            if (pos >= announceAt && pos < marker.ms) {
                 announcedMarkers.add(key)
                 guideStatus.text = "SIGUE: ${marker.name}"
                 speakSection(marker.name, key)
@@ -152,17 +194,14 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     }
 
     private fun resetAutomaticGuide(){announcedMarkers.clear();lastGuidePos=-1}
-
-    override fun onSectionJumpQueued(name:String,triggerMs:Int){queuedGuideName=name;queuedGuideTriggerMs=triggerMs;queuedGuideAnnounced=false;if(::guideStatus.isInitialized)guideStatus.text="SALTO: $name al final de sección"}
-    override fun onSectionJumpCancelled(){clearQueuedGuide();if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="GUÍA: salto cancelado";tts?.stop()}
-    override fun onSectionJumpExecuted(name:String){clearQueuedGuide();resetAutomaticGuide();if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"}
+    override fun onSectionJumpQueued(name:String,triggerMs:Int){queuedGuideName=name;queuedGuideTriggerMs=triggerMs;queuedGuideAnnounced=false;LiveModeBridge.pendingSectionName=name;if(::guideStatus.isInitialized)guideStatus.text="SALTO: $name al final de sección"}
+    override fun onSectionJumpCancelled(){clearQueuedGuide();LiveModeBridge.pendingSectionName="";if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="GUÍA: salto cancelado";tts?.stop()}
+    override fun onSectionJumpExecuted(name:String){clearQueuedGuide();LiveModeBridge.pendingSectionName="";resetAutomaticGuide();if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"}
     private fun clearQueuedGuide(){queuedGuideName="";queuedGuideTriggerMs=-1;queuedGuideAnnounced=false}
-
     private fun speakSection(name:String,utteranceId:String){val spoken=normalizeName(name);tts?.speak(spoken,TextToSpeech.QUEUE_ADD,null,utteranceId)}
     private fun normalizeName(name:String):String{val n=name.trim();return when(n.lowercase(Locale.getDefault())){"intro","introducción","introduccion"->"Intro";"verso"->"Verso";"coro"->"Coro";"puente"->"Puente";"final","outro"->"Final";else->n}}
     private fun loadMarkers():List<Marker>{val title=currentSongKey();if(title.isBlank())return emptyList();val prefs=getSharedPreferences("sequence_player_sections_v15",MODE_PRIVATE);val raw=prefs.getString("sections_v15_$title","[]")?:"[]";return try{val arr=JSONArray(raw);buildList{for(i in 0 until arr.length()){val o=arr.getJSONObject(i);val name=o.optString("name").trim();val ms=o.optInt("ms",-1);if(name.isNotEmpty()&&ms>=0)add(Marker(name,ms))}}.sortedBy{it.ms}}catch(_:Exception){emptyList()}}
     private fun collect(root:View,out:MutableList<SeekBar>){if(root is SeekBar)out.add(root);if(root is ViewGroup)for(i in 0 until root.childCount)collect(root.getChildAt(i),out)}
-
     override fun onInit(status:Int){if(status==TextToSpeech.SUCCESS){ttsReady=true;val result=tts?.setLanguage(Locale("es","MX"));if(result==TextToSpeech.LANG_MISSING_DATA||result==TextToSpeech.LANG_NOT_SUPPORTED)tts?.language=Locale("es","ES")}}
     override fun onDestroy(){guideHandler.removeCallbacks(guideWatcher);try{tts?.stop();tts?.shutdown()}catch(_:Exception){};tts=null;super.onDestroy()}
 }
