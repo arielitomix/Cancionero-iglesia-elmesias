@@ -6,6 +6,7 @@
         <activity android:name=".MainActivityV16" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MainActivityV17" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MainActivityV18" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".LiveModeActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MainActivityV19" android:exported="true" android:screenOrientation="portrait">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
