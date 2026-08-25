@@ -35,7 +35,6 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private var queuedGuideAnnounced = false
     private var liveRequestToken = 0
     private var liveTransportToken = 0
-    private var suppressGuideUntilMs = -1
 
     private val guideWatcher = object : Runnable {
         override fun run() {
@@ -110,12 +109,14 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private fun updateLiveBridge() {
         LiveModeBridge.positionMs = timeline?.progress ?: 0
         LiveModeBridge.pendingSectionName = queuedGuideName
+
         if (LiveModeBridge.requestToken != liveRequestToken) {
             liveRequestToken = LiveModeBridge.requestToken
             val name = LiveModeBridge.requestedSectionName
             val ms = LiveModeBridge.requestedSectionMs
             if (name.isNotBlank() && ms >= 0) requestLiveSection(name, ms)
         }
+
         if (LiveModeBridge.transportToken != liveTransportToken) {
             liveTransportToken = LiveModeBridge.transportToken
             when (LiveModeBridge.transportCommand) {
@@ -166,13 +167,6 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         }
         val pos = timeline?.progress ?: return
         val barMs = quantizedBarDurationMs().coerceAtLeast(100)
-        if (suppressGuideUntilMs >= 0) {
-            if (pos < suppressGuideUntilMs) {
-                lastGuidePos = pos
-                return
-            }
-            suppressGuideUntilMs = -1
-        }
         if (lastGuidePos >= 0 && pos < lastGuidePos - 250) announcedMarkers.clear()
         lastGuidePos = pos
         if (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank()) {
@@ -199,37 +193,10 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun resetAutomaticGuide(){announcedMarkers.clear();lastGuidePos=-1;suppressGuideUntilMs=-1}
-
-    override fun onSectionJumpQueued(name:String,triggerMs:Int){
-        tts?.stop()
-        queuedGuideName=name
-        queuedGuideTriggerMs=triggerMs
-        queuedGuideAnnounced=false
-        LiveModeBridge.pendingSectionName=name
-        if(::guideStatus.isInitialized)guideStatus.text="SALTO: $name al final de sección"
-    }
-
+    private fun resetAutomaticGuide(){announcedMarkers.clear();lastGuidePos=-1}
+    override fun onSectionJumpQueued(name:String,triggerMs:Int){queuedGuideName=name;queuedGuideTriggerMs=triggerMs;queuedGuideAnnounced=false;LiveModeBridge.pendingSectionName=name;if(::guideStatus.isInitialized)guideStatus.text="SALTO: $name al final de sección"}
     override fun onSectionJumpCancelled(){clearQueuedGuide();LiveModeBridge.pendingSectionName="";if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="GUÍA: salto cancelado";tts?.stop()}
-    override fun onSectionJumpExecuted(name:String){
-        clearQueuedGuide()
-        LiveModeBridge.pendingSectionName=""
-        announcedMarkers.clear()
-        val pos=timeline?.progress?:0
-        val markers=loadMarkers()
-        val currentIndex=markers.indexOfLast{it.ms<=pos}
-        if(currentIndex>=0){
-            val current=markers[currentIndex]
-            announcedMarkers.add("${currentSongKey()}|${current.name}|${current.ms}")
-            if(currentIndex<markers.lastIndex){
-                val next=markers[currentIndex+1]
-                announcedMarkers.add("${currentSongKey()}|${next.name}|${next.ms}")
-                suppressGuideUntilMs=next.ms
-            } else suppressGuideUntilMs=-1
-        } else suppressGuideUntilMs=-1
-        lastGuidePos=pos
-        if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"
-    }
+    override fun onSectionJumpExecuted(name:String){clearQueuedGuide();LiveModeBridge.pendingSectionName="";resetAutomaticGuide();if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"}
     private fun clearQueuedGuide(){queuedGuideName="";queuedGuideTriggerMs=-1;queuedGuideAnnounced=false}
     private fun speakSection(name:String,utteranceId:String){val spoken=normalizeName(name);tts?.speak(spoken,TextToSpeech.QUEUE_ADD,null,utteranceId)}
     private fun normalizeName(name:String):String{val n=name.trim();return when(n.lowercase(Locale.getDefault())){"intro","introducción","introduccion"->"Intro";"verso"->"Verso";"coro"->"Coro";"puente"->"Puente";"final","outro"->"Final";else->n}}
