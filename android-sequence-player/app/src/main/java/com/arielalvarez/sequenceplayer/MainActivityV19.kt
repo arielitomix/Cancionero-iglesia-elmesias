@@ -3,6 +3,7 @@ package com.arielalvarez.sequenceplayer
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -38,6 +39,12 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private var guideGeneration = 0
     private var manualJumpActive = false
 
+    private val bg = Color.rgb(8,11,14)
+    private val surface = Color.rgb(25,27,29)
+    private val surfaceHigh = Color.rgb(36,36,40)
+    private val lime = Color.rgb(166,255,0)
+    private val secondaryText = Color.rgb(161,161,170)
+
     private val guideWatcher = object : Runnable {
         override fun run() {
             updateLiveBridge()
@@ -49,7 +56,9 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         tts = TextToSpeech(this, this)
+        applySecuenLiveBaseStyle()
         findTimeline()
+        installBrandHeader()
         installGuidePanel()
         installDeleteButton()
         installLiveButton()
@@ -57,41 +66,64 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         guideHandler.post(guideWatcher)
     }
 
+    private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
+    private fun rounded(color:Int,radius:Int=12,strokeColor:Int?=null)=GradientDrawable().apply{setColor(color);cornerRadius=dp(radius).toFloat();if(strokeColor!=null)setStroke(dp(1),strokeColor)}
     private fun rootLayout(): LinearLayout? = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as? LinearLayout
 
+    private fun applySecuenLiveBaseStyle(){
+        window.statusBarColor=bg
+        window.navigationBarColor=bg
+        findViewById<ViewGroup>(android.R.id.content).setBackgroundColor(bg)
+        val root=rootLayout()?:return
+        root.setBackgroundColor(bg)
+        recolorTree(root)
+    }
+
+    private fun recolorTree(view:View){
+        when(view){
+            is TextView -> if(view !is Button){view.setTextColor(if(view.textSize>=18f)Color.WHITE else secondaryText)}
+            is Button -> {view.setTextColor(Color.WHITE);view.background=rounded(surfaceHigh,10,Color.rgb(54,58,62))}
+        }
+        if(view is ViewGroup)for(i in 0 until view.childCount)recolorTree(view.getChildAt(i))
+    }
+
+    private fun installBrandHeader(){
+        val root=rootLayout()?:return
+        val header=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(12),dp(10),dp(12),dp(8));background=rounded(surface,16,Color.rgb(45,49,52))}
+        header.addView(TextView(this).apply{text="SecuenLive";setTextColor(lime);textSize=24f;gravity=Gravity.CENTER;letterSpacing=.03f},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(38)))
+        header.addView(TextView(this).apply{text="TUS SECUENCIAS, LISTAS PARA EL ESCENARIO";setTextColor(secondaryText);textSize=10f;gravity=Gravity.CENTER;letterSpacing=.08f},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(24)))
+        root.addView(header,0,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(70)).apply{leftMargin=dp(10);rightMargin=dp(10);topMargin=dp(8);bottomMargin=dp(6)})
+    }
+
     private fun installGuidePanel() {
-        val density = resources.displayMetrics.density
-        fun dp(v: Int) = (v * density).toInt()
         val root = rootLayout() ?: return
-        val panel = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),dp(5),dp(12),dp(6)); setBackgroundColor(Color.rgb(24,31,40)) }
-        guideStatus = TextView(this).apply { text="GUÍA: lista"; setTextColor(Color.LTGRAY); textSize=12f }
+        val panel = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),dp(5),dp(12),dp(6)); background=rounded(surface,14,Color.rgb(45,49,52)) }
+        guideStatus = TextView(this).apply { text="GUÍA: lista"; setTextColor(secondaryText); textSize=12f }
         panel.addView(guideStatus, LinearLayout.LayoutParams(0,dp(44),1f))
         guideToggle = Button(this).apply {
-            text="GUÍA AUTO: OFF"
+            text="GUÍA AUTO: OFF";setTextColor(Color.WHITE);background=rounded(surfaceHigh,12,Color.rgb(58,62,66))
             setOnClickListener {
                 guideEnabled=!guideEnabled
                 resetAutomaticGuide()
                 text=if(guideEnabled)"GUÍA AUTO: ON" else "GUÍA AUTO: OFF"
+                setTextColor(if(guideEnabled)Color.rgb(12,16,10) else Color.WHITE)
+                background=rounded(if(guideEnabled)lime else surfaceHigh,12,if(guideEnabled)null else Color.rgb(58,62,66))
                 guideStatus.text=if(guideEnabled)"GUÍA: avisará 1 compás antes" else "GUÍA: apagada"
             }
         }
         panel.addView(guideToggle, LinearLayout.LayoutParams(dp(170),dp(44)))
-        root.addView(panel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(56)))
+        root.addView(panel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(58)).apply{leftMargin=dp(10);rightMargin=dp(10);topMargin=dp(4)})
     }
 
     private fun installDeleteButton() {
-        val density=resources.displayMetrics.density
-        fun dp(v:Int)=(v*density).toInt()
         val root=rootLayout()?:return
-        root.addView(Button(this).apply{text="🗑 BORRAR CANCIÓN";setOnClickListener{confirmDeleteSong()}},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(46)).apply{leftMargin=dp(12);rightMargin=dp(12);topMargin=dp(4);bottomMargin=dp(6)})
+        root.addView(Button(this).apply{text="BORRAR CANCIÓN";setTextColor(Color.rgb(255,130,130));background=rounded(surface,12,Color.rgb(92,48,48));setOnClickListener{confirmDeleteSong()}},LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(48)).apply{leftMargin=dp(12);rightMargin=dp(12);topMargin=dp(6);bottomMargin=dp(6)})
     }
 
     private fun installLiveButton() {
-        val density = resources.displayMetrics.density
-        fun dp(v: Int) = (v * density).toInt()
         val root = rootLayout() ?: return
         val button = Button(this).apply {
-            text = "🎵 MODO EN VIVO"
+            text = "▶  ABRIR MODO EN VIVO";textSize=16f;setTextColor(Color.rgb(12,16,10));background=rounded(lime,14)
             setOnClickListener {
                 LiveModeBridge.positionMs = timeline?.progress ?: 0
                 LiveModeBridge.pendingSectionName = ""
@@ -100,56 +132,19 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
                 startActivity(intent)
             }
         }
-        val params = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply {
-            leftMargin = dp(12)
-            rightMargin = dp(12)
-            bottomMargin = dp(8)
-        }
+        val params = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)).apply {leftMargin=dp(12);rightMargin=dp(12);bottomMargin=dp(10)}
         root.addView(button, params)
     }
 
     private fun updateLiveBridge() {
         LiveModeBridge.positionMs = timeline?.progress ?: 0
         LiveModeBridge.pendingSectionName = queuedGuideName
-        if (LiveModeBridge.requestToken != liveRequestToken) {
-            liveRequestToken = LiveModeBridge.requestToken
-            val name = LiveModeBridge.requestedSectionName
-            val ms = LiveModeBridge.requestedSectionMs
-            if (name.isNotBlank() && ms >= 0) requestLiveSection(name, ms)
-        }
-        if (LiveModeBridge.transportToken != liveTransportToken) {
-            liveTransportToken = LiveModeBridge.transportToken
-            when (LiveModeBridge.transportCommand) {
-                "toggle" -> toggleLivePlayback()
-                "stop" -> invokeBase("stopPlayback")
-            }
-        }
+        if (LiveModeBridge.requestToken != liveRequestToken) {liveRequestToken = LiveModeBridge.requestToken;val name = LiveModeBridge.requestedSectionName;val ms = LiveModeBridge.requestedSectionMs;if (name.isNotBlank() && ms >= 0) requestLiveSection(name, ms)}
+        if (LiveModeBridge.transportToken != liveTransportToken) {liveTransportToken = LiveModeBridge.transportToken;when (LiveModeBridge.transportCommand) {"toggle" -> toggleLivePlayback();"stop" -> invokeBase("stopPlayback")}}
     }
 
-    private fun requestLiveSection(name: String, ms: Int) {
-        try {
-            val markerClass = Class.forName("com.arielalvarez.sequenceplayer.MainActivityV16\$SectionMarker")
-            val constructor = markerClass.getDeclaredConstructor(String::class.java, Int::class.javaPrimitiveType)
-            constructor.isAccessible = true
-            val marker = constructor.newInstance(name, ms)
-            val method = MainActivityV16::class.java.getDeclaredMethod("requestSectionJump", markerClass)
-            method.isAccessible = true
-            method.invoke(this, marker)
-        } catch (_: Exception) {
-            Toast.makeText(this, "No se pudo preparar esa sección", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun toggleLivePlayback() {
-        try {
-            val field = MainActivityV13::class.java.getDeclaredField("playing")
-            field.isAccessible = true
-            if (field.getBoolean(this)) invokeBase("pausePlayback") else invokeBase("startPlayback")
-        } catch (_: Exception) {
-            Toast.makeText(this, "No se pudo cambiar la reproducción", Toast.LENGTH_SHORT).show()
-        }
-    }
-
+    private fun requestLiveSection(name: String, ms: Int) {try {val markerClass = Class.forName("com.arielalvarez.sequenceplayer.MainActivityV16\$SectionMarker");val constructor = markerClass.getDeclaredConstructor(String::class.java, Int::class.javaPrimitiveType);constructor.isAccessible = true;val marker = constructor.newInstance(name, ms);val method = MainActivityV16::class.java.getDeclaredMethod("requestSectionJump", markerClass);method.isAccessible = true;method.invoke(this, marker)} catch (_: Exception) {Toast.makeText(this, "No se pudo preparar esa sección", Toast.LENGTH_SHORT).show()}}
+    private fun toggleLivePlayback() {try {val field = MainActivityV13::class.java.getDeclaredField("playing");field.isAccessible = true;if (field.getBoolean(this)) invokeBase("pausePlayback") else invokeBase("startPlayback")} catch (_: Exception) {Toast.makeText(this, "No se pudo cambiar la reproducción", Toast.LENGTH_SHORT).show()}}
     private fun confirmDeleteSong(){val title=currentSongKey().ifBlank{"esta canción"};AlertDialog.Builder(this).setTitle("Borrar canción").setMessage("¿Seguro que quieres borrar “$title” del setlist?").setPositiveButton("BORRAR"){_,_->deleteSelectedSong()}.setNegativeButton("CANCELAR",null).show()}
     private fun deleteSelectedSong(){try{val songsField=MainActivityV13::class.java.getDeclaredField("songs").apply{isAccessible=true};@Suppress("UNCHECKED_CAST")val songs=songsField.get(this)as MutableList<Any>;val indexField=MainActivityV13::class.java.getDeclaredField("selectedSongIndex").apply{isAccessible=true};val index=indexField.getInt(this);if(index !in songs.indices){Toast.makeText(this,"No hay una canción seleccionada para borrar",Toast.LENGTH_SHORT).show();return};val deletedTitle=currentSongKey();invokeBase("stopPlayback");songs.removeAt(index);invokeBase("saveSongLibrary");invokeBase("refreshSongSpinner");resetAutomaticGuide();clearQueuedGuide();tts?.stop();if(songs.isEmpty()){indexField.setInt(this,-1);invokeBase("newSong");guideHandler.postDelayed({removeEmptyClickNow()},80L)}else{val nextIndex=index.coerceAtMost(songs.lastIndex);indexField.setInt(this,nextIndex);invokeBase("loadSong",nextIndex)};Toast.makeText(this,"Canción borrada: $deletedTitle",Toast.LENGTH_SHORT).show()}catch(e:Exception){Toast.makeText(this,"No se pudo borrar la canción",Toast.LENGTH_LONG).show()}}
     private fun removeEmptyClickNow(){try{val method=MainActivityV17::class.java.getDeclaredMethod("removeEmptyClickStem");method.isAccessible=true;method.invoke(this)}catch(_:Exception){}}
@@ -158,104 +153,20 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
 
     private fun updateGuide() {
         if (!guideEnabled || !ttsReady) return
-        val song = currentSongKey()
-        if (song != lastSong) {
-            lastSong = song
-            resetAutomaticGuide()
-            clearQueuedGuide()
-            tts?.stop()
-        }
-        val pos = timeline?.progress ?: return
-        val barMs = quantizedBarDurationMs().coerceAtLeast(100)
-        if (lastGuidePos >= 0 && pos < lastGuidePos - 250 && !manualJumpActive) announcedMarkers.clear()
-        lastGuidePos = pos
-
-        if (manualJumpActive || (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank())) {
-            if (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank()) {
-                val announceAt = (queuedGuideTriggerMs - barMs).coerceAtLeast(0)
-                guideStatus.text = "SALTO: $queuedGuideName"
-                if (!queuedGuideAnnounced && pos >= announceAt && pos < queuedGuideTriggerMs) {
-                    queuedGuideAnnounced = true
-                    speakSection(queuedGuideName, "manual_${guideGeneration}_${queuedGuideName}", guideGeneration)
-                }
-            }
-            return
-        }
-
-        val generationAtStart = guideGeneration
-        val markers = loadMarkers()
-        if (markers.isEmpty()) return
-        markers.forEach { marker ->
-            if (generationAtStart != guideGeneration || manualJumpActive) return
-            val key = "$song|${marker.name}|${marker.ms}"
-            if (key in announcedMarkers) return@forEach
-            val announceAt = (marker.ms - barMs).coerceAtLeast(0)
-            if (pos >= announceAt && pos < marker.ms) {
-                announcedMarkers.add(key)
-                guideStatus.text = "SIGUE: ${marker.name}"
-                speakSection(marker.name, "auto_${generationAtStart}_${marker.ms}_${marker.name}", generationAtStart)
-                return
-            }
-        }
+        val song = currentSongKey();if (song != lastSong) {lastSong = song;resetAutomaticGuide();clearQueuedGuide();tts?.stop()}
+        val pos = timeline?.progress ?: return;val barMs = quantizedBarDurationMs().coerceAtLeast(100)
+        if (lastGuidePos >= 0 && pos < lastGuidePos - 250 && !manualJumpActive) announcedMarkers.clear();lastGuidePos = pos
+        if (manualJumpActive || (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank())) {if (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank()) {val announceAt = (queuedGuideTriggerMs - barMs).coerceAtLeast(0);guideStatus.text = "SALTO: $queuedGuideName";if (!queuedGuideAnnounced && pos >= announceAt && pos < queuedGuideTriggerMs) {queuedGuideAnnounced = true;speakSection(queuedGuideName, "manual_${guideGeneration}_${queuedGuideName}", guideGeneration)}};return}
+        val generationAtStart = guideGeneration;val markers = loadMarkers();if (markers.isEmpty()) return
+        markers.forEach { marker ->if (generationAtStart != guideGeneration || manualJumpActive) return;val key = "$song|${marker.name}|${marker.ms}";if (key in announcedMarkers) return@forEach;val announceAt = (marker.ms - barMs).coerceAtLeast(0);if (pos >= announceAt && pos < marker.ms) {announcedMarkers.add(key);guideStatus.text = "SIGUE: ${marker.name}";speakSection(marker.name, "auto_${generationAtStart}_${marker.ms}_${marker.name}", generationAtStart);return}}
     }
 
     private fun resetAutomaticGuide(){announcedMarkers.clear();lastGuidePos=-1}
-
-    override fun onSectionJumpQueued(name:String,triggerMs:Int){
-        guideGeneration++
-        manualJumpActive=true
-        tts?.stop()
-        queuedGuideName=name
-        queuedGuideTriggerMs=triggerMs
-        queuedGuideAnnounced=false
-        LiveModeBridge.pendingSectionName=name
-        if(::guideStatus.isInitialized)guideStatus.text="SALTO: $name al final de sección"
-    }
-
-    override fun onSectionJumpCancelled(){
-        guideGeneration++
-        manualJumpActive=false
-        clearQueuedGuide()
-        LiveModeBridge.pendingSectionName=""
-        if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="GUÍA: salto cancelado"
-        tts?.stop()
-    }
-
-    override fun onSectionJumpExecuted(name:String){
-        guideGeneration++
-        manualJumpActive=false
-        clearQueuedGuide()
-        LiveModeBridge.pendingSectionName=""
-
-        val pos=timeline?.progress?:0
-        val markers=loadMarkers()
-        announcedMarkers.clear()
-        val currentIndex=markers.indexOfLast{it.ms<=pos}
-        if(currentIndex>=0){
-            val current=markers[currentIndex]
-            announcedMarkers.add("${currentSongKey()}|${current.name}|${current.ms}")
-            if(currentIndex<markers.lastIndex){
-                val next=markers[currentIndex+1]
-                val barMs=quantizedBarDurationMs().coerceAtLeast(100)
-                val nextAnnounceAt=(next.ms-barMs).coerceAtLeast(0)
-                if(pos>=nextAnnounceAt){
-                    announcedMarkers.add("${currentSongKey()}|${next.name}|${next.ms}")
-                }
-            }
-        }
-        lastGuidePos=pos
-        if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"
-    }
-
+    override fun onSectionJumpQueued(name:String,triggerMs:Int){guideGeneration++;manualJumpActive=true;tts?.stop();queuedGuideName=name;queuedGuideTriggerMs=triggerMs;queuedGuideAnnounced=false;LiveModeBridge.pendingSectionName=name;if(::guideStatus.isInitialized)guideStatus.text="SALTO: $name al final de sección"}
+    override fun onSectionJumpCancelled(){guideGeneration++;manualJumpActive=false;clearQueuedGuide();LiveModeBridge.pendingSectionName="";if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="GUÍA: salto cancelado";tts?.stop()}
+    override fun onSectionJumpExecuted(name:String){guideGeneration++;manualJumpActive=false;clearQueuedGuide();LiveModeBridge.pendingSectionName="";val pos=timeline?.progress?:0;val markers=loadMarkers();announcedMarkers.clear();val currentIndex=markers.indexOfLast{it.ms<=pos};if(currentIndex>=0){val current=markers[currentIndex];announcedMarkers.add("${currentSongKey()}|${current.name}|${current.ms}");if(currentIndex<markers.lastIndex){val next=markers[currentIndex+1];val barMs=quantizedBarDurationMs().coerceAtLeast(100);val nextAnnounceAt=(next.ms-barMs).coerceAtLeast(0);if(pos>=nextAnnounceAt){announcedMarkers.add("${currentSongKey()}|${next.name}|${next.ms}")}}};lastGuidePos=pos;if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"}
     private fun clearQueuedGuide(){queuedGuideName="";queuedGuideTriggerMs=-1;queuedGuideAnnounced=false}
-
-    private fun speakSection(name:String,utteranceId:String,generation:Int=guideGeneration){
-        if(generation!=guideGeneration)return
-        if(utteranceId.startsWith("auto_")&&manualJumpActive)return
-        val spoken=normalizeName(name)
-        tts?.speak(spoken,TextToSpeech.QUEUE_ADD,null,utteranceId)
-    }
-
+    private fun speakSection(name:String,utteranceId:String,generation:Int=guideGeneration){if(generation!=guideGeneration)return;if(utteranceId.startsWith("auto_")&&manualJumpActive)return;val spoken=normalizeName(name);tts?.speak(spoken,TextToSpeech.QUEUE_ADD,null,utteranceId)}
     private fun normalizeName(name:String):String{val n=name.trim();return when(n.lowercase(Locale.getDefault())){"intro","introducción","introduccion"->"Intro";"verso"->"Verso";"coro"->"Coro";"puente"->"Puente";"final","outro"->"Final";else->n}}
     private fun loadMarkers():List<Marker>{val title=currentSongKey();if(title.isBlank())return emptyList();val prefs=getSharedPreferences("sequence_player_sections_v15",MODE_PRIVATE);val raw=prefs.getString("sections_v15_$title","[]")?:"[]";return try{val arr=JSONArray(raw);buildList{for(i in 0 until arr.length()){val o=arr.getJSONObject(i);val name=o.optString("name").trim();val ms=o.optInt("ms",-1);if(name.isNotEmpty()&&ms>=0)add(Marker(name,ms))}}.sortedBy{it.ms}}catch(_:Exception){emptyList()}}
     private fun collect(root:View,out:MutableList<SeekBar>){if(root is SeekBar)out.add(root);if(root is ViewGroup)for(i in 0 until root.childCount)collect(root.getChildAt(i),out)}
