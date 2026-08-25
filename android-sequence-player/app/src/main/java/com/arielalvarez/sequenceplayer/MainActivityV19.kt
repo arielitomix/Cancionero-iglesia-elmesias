@@ -35,6 +35,8 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private var queuedGuideAnnounced = false
     private var liveRequestToken = 0
     private var liveTransportToken = 0
+    private var guideGeneration = 0
+    private var manualJumpActive = false
 
     private val guideWatcher = object : Runnable {
         override fun run() {
@@ -109,14 +111,12 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private fun updateLiveBridge() {
         LiveModeBridge.positionMs = timeline?.progress ?: 0
         LiveModeBridge.pendingSectionName = queuedGuideName
-
         if (LiveModeBridge.requestToken != liveRequestToken) {
             liveRequestToken = LiveModeBridge.requestToken
             val name = LiveModeBridge.requestedSectionName
             val ms = LiveModeBridge.requestedSectionMs
             if (name.isNotBlank() && ms >= 0) requestLiveSection(name, ms)
         }
-
         if (LiveModeBridge.transportToken != liveTransportToken) {
             liveTransportToken = LiveModeBridge.transportToken
             when (LiveModeBridge.transportCommand) {
@@ -167,27 +167,33 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         }
         val pos = timeline?.progress ?: return
         val barMs = quantizedBarDurationMs().coerceAtLeast(100)
-        if (lastGuidePos >= 0 && pos < lastGuidePos - 250) announcedMarkers.clear()
+        if (lastGuidePos >= 0 && pos < lastGuidePos - 250 && !manualJumpActive) announcedMarkers.clear()
         lastGuidePos = pos
-        if (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank()) {
-            val announceAt = (queuedGuideTriggerMs - barMs).coerceAtLeast(0)
-            guideStatus.text = "SALTO: $queuedGuideName"
-            if (!queuedGuideAnnounced && pos >= announceAt && pos < queuedGuideTriggerMs) {
-                queuedGuideAnnounced = true
-                speakSection(queuedGuideName, "jump_${queuedGuideTriggerMs}_${queuedGuideName}")
+
+        if (manualJumpActive || (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank())) {
+            if (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank()) {
+                val announceAt = (queuedGuideTriggerMs - barMs).coerceAtLeast(0)
+                guideStatus.text = "SALTO: $queuedGuideName"
+                if (!queuedGuideAnnounced && pos >= announceAt && pos < queuedGuideTriggerMs) {
+                    queuedGuideAnnounced = true
+                    speakSection(queuedGuideName, "manual_${guideGeneration}_${queuedGuideName}", guideGeneration)
+                }
             }
             return
         }
+
+        val generationAtStart = guideGeneration
         val markers = loadMarkers()
         if (markers.isEmpty()) return
         markers.forEach { marker ->
+            if (generationAtStart != guideGeneration || manualJumpActive) return
             val key = "$song|${marker.name}|${marker.ms}"
             if (key in announcedMarkers) return@forEach
             val announceAt = (marker.ms - barMs).coerceAtLeast(0)
             if (pos >= announceAt && pos < marker.ms) {
                 announcedMarkers.add(key)
                 guideStatus.text = "SIGUE: ${marker.name}"
-                speakSection(marker.name, key)
+                speakSection(marker.name, "auto_${generationAtStart}_${marker.ms}_${marker.name}", generationAtStart)
                 return
             }
         }
@@ -196,6 +202,8 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     private fun resetAutomaticGuide(){announcedMarkers.clear();lastGuidePos=-1}
 
     override fun onSectionJumpQueued(name:String,triggerMs:Int){
+        guideGeneration++
+        manualJumpActive=true
         tts?.stop()
         queuedGuideName=name
         queuedGuideTriggerMs=triggerMs
@@ -204,10 +212,33 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         if(::guideStatus.isInitialized)guideStatus.text="SALTO: $name al final de sección"
     }
 
-    override fun onSectionJumpCancelled(){clearQueuedGuide();LiveModeBridge.pendingSectionName="";if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="GUÍA: salto cancelado";tts?.stop()}
-    override fun onSectionJumpExecuted(name:String){clearQueuedGuide();LiveModeBridge.pendingSectionName="";resetAutomaticGuide();if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"}
+    override fun onSectionJumpCancelled(){
+        guideGeneration++
+        manualJumpActive=false
+        clearQueuedGuide()
+        LiveModeBridge.pendingSectionName=""
+        if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="GUÍA: salto cancelado"
+        tts?.stop()
+    }
+
+    override fun onSectionJumpExecuted(name:String){
+        guideGeneration++
+        manualJumpActive=false
+        clearQueuedGuide()
+        LiveModeBridge.pendingSectionName=""
+        resetAutomaticGuide()
+        if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"
+    }
+
     private fun clearQueuedGuide(){queuedGuideName="";queuedGuideTriggerMs=-1;queuedGuideAnnounced=false}
-    private fun speakSection(name:String,utteranceId:String){val spoken=normalizeName(name);tts?.speak(spoken,TextToSpeech.QUEUE_ADD,null,utteranceId)}
+
+    private fun speakSection(name:String,utteranceId:String,generation:Int=guideGeneration){
+        if(generation!=guideGeneration)return
+        if(utteranceId.startsWith("auto_")&&manualJumpActive)return
+        val spoken=normalizeName(name)
+        tts?.speak(spoken,TextToSpeech.QUEUE_ADD,null,utteranceId)
+    }
+
     private fun normalizeName(name:String):String{val n=name.trim();return when(n.lowercase(Locale.getDefault())){"intro","introducción","introduccion"->"Intro";"verso"->"Verso";"coro"->"Coro";"puente"->"Puente";"final","outro"->"Final";else->n}}
     private fun loadMarkers():List<Marker>{val title=currentSongKey();if(title.isBlank())return emptyList();val prefs=getSharedPreferences("sequence_player_sections_v15",MODE_PRIVATE);val raw=prefs.getString("sections_v15_$title","[]")?:"[]";return try{val arr=JSONArray(raw);buildList{for(i in 0 until arr.length()){val o=arr.getJSONObject(i);val name=o.optString("name").trim();val ms=o.optInt("ms",-1);if(name.isNotEmpty()&&ms>=0)add(Marker(name,ms))}}.sortedBy{it.ms}}catch(_:Exception){emptyList()}}
     private fun collect(root:View,out:MutableList<SeekBar>){if(root is SeekBar)out.add(root);if(root is ViewGroup)for(i in 0 until root.childCount)collect(root.getChildAt(i),out)}
