@@ -39,8 +39,8 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
 
     private val guideWatcher = object : Runnable {
         override fun run() {
-            updateGuide()
             updateLiveBridge()
+            updateGuide()
             guideHandler.postDelayed(this, 40L)
         }
     }
@@ -127,6 +127,7 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
 
     private fun requestLiveSection(name: String, ms: Int) {
         try {
+            tts?.stop()
             val markerClass = Class.forName("com.arielalvarez.sequenceplayer.MainActivityV16\$SectionMarker")
             val constructor = markerClass.getDeclaredConstructor(String::class.java, Int::class.javaPrimitiveType)
             constructor.isAccessible = true
@@ -166,6 +167,19 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         }
         val pos = timeline?.progress ?: return
         val barMs = quantizedBarDurationMs().coerceAtLeast(100)
+
+        if (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank()) {
+            val announceAt = (queuedGuideTriggerMs - barMs).coerceAtLeast(0)
+            guideStatus.text = "SALTO: $queuedGuideName"
+            if (!queuedGuideAnnounced && pos >= announceAt && pos < queuedGuideTriggerMs) {
+                tts?.stop()
+                queuedGuideAnnounced = true
+                speakSection(queuedGuideName, "jump_${queuedGuideTriggerMs}_${queuedGuideName}")
+            }
+            lastGuidePos = pos
+            return
+        }
+
         if (suppressGuideUntilMs >= 0) {
             if (pos < suppressGuideUntilMs) {
                 lastGuidePos = pos
@@ -175,15 +189,6 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         }
         if (lastGuidePos >= 0 && pos < lastGuidePos - 250) announcedMarkers.clear()
         lastGuidePos = pos
-        if (queuedGuideTriggerMs >= 0 && queuedGuideName.isNotBlank()) {
-            val announceAt = (queuedGuideTriggerMs - barMs).coerceAtLeast(0)
-            guideStatus.text = "SALTO: $queuedGuideName"
-            if (!queuedGuideAnnounced && pos >= announceAt && pos < queuedGuideTriggerMs) {
-                queuedGuideAnnounced = true
-                speakSection(queuedGuideName, "jump_${queuedGuideTriggerMs}_${queuedGuideName}")
-            }
-            return
-        }
         val markers = loadMarkers()
         if (markers.isEmpty()) return
         markers.forEach { marker ->
@@ -227,7 +232,7 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"
     }
     private fun clearQueuedGuide(){queuedGuideName="";queuedGuideTriggerMs=-1;queuedGuideAnnounced=false}
-    private fun speakSection(name:String,utteranceId:String){val spoken=normalizeName(name);tts?.speak(spoken,TextToSpeech.QUEUE_ADD,null,utteranceId)}
+    private fun speakSection(name:String,utteranceId:String){val spoken=normalizeName(name);tts?.speak(spoken,TextToSpeech.QUEUE_FLUSH,null,utteranceId)}
     private fun normalizeName(name:String):String{val n=name.trim();return when(n.lowercase(Locale.getDefault())){"intro","introducción","introduccion"->"Intro";"verso"->"Verso";"coro"->"Coro";"puente"->"Puente";"final","outro"->"Final";else->n}}
     private fun loadMarkers():List<Marker>{val title=currentSongKey();if(title.isBlank())return emptyList();val prefs=getSharedPreferences("sequence_player_sections_v15",MODE_PRIVATE);val raw=prefs.getString("sections_v15_$title","[]")?:"[]";return try{val arr=JSONArray(raw);buildList{for(i in 0 until arr.length()){val o=arr.getJSONObject(i);val name=o.optString("name").trim();val ms=o.optInt("ms",-1);if(name.isNotEmpty()&&ms>=0)add(Marker(name,ms))}}.sortedBy{it.ms}}catch(_:Exception){emptyList()}}
     private fun collect(root:View,out:MutableList<SeekBar>){if(root is SeekBar)out.add(root);if(root is ViewGroup)for(i in 0 until root.childCount)collect(root.getChildAt(i),out)}
