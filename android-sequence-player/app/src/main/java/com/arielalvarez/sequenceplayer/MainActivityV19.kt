@@ -226,7 +226,24 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
         manualJumpActive=false
         clearQueuedGuide()
         LiveModeBridge.pendingSectionName=""
-        resetAutomaticGuide()
+
+        val pos=timeline?.progress?:0
+        val markers=loadMarkers()
+        announcedMarkers.clear()
+        val currentIndex=markers.indexOfLast{it.ms<=pos}
+        if(currentIndex>=0){
+            val current=markers[currentIndex]
+            announcedMarkers.add("${currentSongKey()}|${current.name}|${current.ms}")
+            if(currentIndex<markers.lastIndex){
+                val next=markers[currentIndex+1]
+                val barMs=quantizedBarDurationMs().coerceAtLeast(100)
+                val nextAnnounceAt=(next.ms-barMs).coerceAtLeast(0)
+                if(pos>=nextAnnounceAt){
+                    announcedMarkers.add("${currentSongKey()}|${next.name}|${next.ms}")
+                }
+            }
+        }
+        lastGuidePos=pos
         if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="ENTRANDO: $name"
     }
 
