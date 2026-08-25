@@ -200,7 +200,16 @@ class MainActivityV19 : MainActivityV18(), TextToSpeech.OnInitListener {
     }
 
     private fun resetAutomaticGuide(){announcedMarkers.clear();lastGuidePos=-1;suppressGuideUntilMs=-1}
-    override fun onSectionJumpQueued(name:String,triggerMs:Int){queuedGuideName=name;queuedGuideTriggerMs=triggerMs;queuedGuideAnnounced=false;LiveModeBridge.pendingSectionName=name;if(::guideStatus.isInitialized)guideStatus.text="SALTO: $name al final de sección"}
+
+    override fun onSectionJumpQueued(name:String,triggerMs:Int){
+        tts?.stop()
+        queuedGuideName=name
+        queuedGuideTriggerMs=triggerMs
+        queuedGuideAnnounced=false
+        LiveModeBridge.pendingSectionName=name
+        if(::guideStatus.isInitialized)guideStatus.text="SALTO: $name al final de sección"
+    }
+
     override fun onSectionJumpCancelled(){clearQueuedGuide();LiveModeBridge.pendingSectionName="";if(::guideStatus.isInitialized&&guideEnabled)guideStatus.text="GUÍA: salto cancelado";tts?.stop()}
     override fun onSectionJumpExecuted(name:String){
         clearQueuedGuide()
