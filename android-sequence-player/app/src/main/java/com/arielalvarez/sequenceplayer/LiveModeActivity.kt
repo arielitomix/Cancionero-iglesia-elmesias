@@ -20,7 +20,9 @@ class LiveModeActivity : Activity() {
     private lateinit var nowView: TextView
     private lateinit var nextView: TextView
     private lateinit var statusView: TextView
+    private lateinit var markersContainer: LinearLayout
     private var song = ""
+    private var lastMarkersSignature = ""
 
     private val bg = Color.rgb(8, 11, 14)
     private val surface = Color.rgb(25, 27, 29)
@@ -30,6 +32,7 @@ class LiveModeActivity : Activity() {
 
     private val updater = object : Runnable {
         override fun run() {
+            refreshSectionButtonsIfNeeded()
             refreshSectionLabels()
             handler.postDelayed(this, 150L)
         }
@@ -39,7 +42,13 @@ class LiveModeActivity : Activity() {
         super.onCreate(savedInstanceState)
         song = intent.getStringExtra("song").orEmpty()
         setContentView(buildUi())
+        refreshSectionButtonsIfNeeded(force = true)
         handler.post(updater)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshSectionButtonsIfNeeded(force = true)
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -105,40 +114,10 @@ class LiveModeActivity : Activity() {
             setPadding(dp(2), dp(14), 0, dp(8))
         })
 
-        val markers = loadMarkers()
-        if (markers.isEmpty()) {
-            root.addView(TextView(this).apply {
-                text = "Esta canción todavía no tiene marcadores."
-                setTextColor(secondaryText)
-                gravity = Gravity.CENTER
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)))
-        } else {
-            val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            markers.chunked(2).forEach { rowMarkers ->
-                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                rowMarkers.forEachIndexed { index, marker ->
-                    row.addView(Button(this).apply {
-                        text = marker.name.uppercase()
-                        textSize = 15f
-                        setTextColor(Color.WHITE)
-                        background = rounded(surfaceHigh, 12, Color.rgb(57, 60, 64))
-                        setOnClickListener {
-                            statusView.text = "PREPARADO  •  ${marker.name.uppercase()}"
-                            statusView.setTextColor(lime)
-                            LiveModeBridge.requestedSectionName = marker.name
-                            LiveModeBridge.requestedSectionMs = marker.ms
-                            LiveModeBridge.requestToken++
-                        }
-                    }, LinearLayout.LayoutParams(0, dp(56), 1f).apply {
-                        if (index == 0) marginEnd = dp(4) else marginStart = dp(4)
-                        bottomMargin = dp(8)
-                    })
-                }
-                if (rowMarkers.size == 1) row.addView(TextView(this), LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginStart = dp(4) })
-                grid.addView(row)
-            }
-            root.addView(grid)
+        markersContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
         }
+        root.addView(markersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val transport = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -176,6 +155,50 @@ class LiveModeActivity : Activity() {
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(4) })
         return scroll
+    }
+
+    private fun refreshSectionButtonsIfNeeded(force: Boolean = false) {
+        if (!::markersContainer.isInitialized) return
+        val markers = loadMarkers()
+        val signature = markers.joinToString("|") { "${it.name}@${it.ms}" }
+        if (!force && signature == lastMarkersSignature) return
+        lastMarkersSignature = signature
+        markersContainer.removeAllViews()
+
+        if (markers.isEmpty()) {
+            markersContainer.addView(TextView(this).apply {
+                text = "Esta canción todavía no tiene marcadores."
+                setTextColor(secondaryText)
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(70)))
+            return
+        }
+
+        markers.chunked(2).forEach { rowMarkers ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            rowMarkers.forEachIndexed { index, marker ->
+                row.addView(Button(this).apply {
+                    text = marker.name.uppercase()
+                    textSize = 15f
+                    setTextColor(Color.WHITE)
+                    background = rounded(surfaceHigh, 12, Color.rgb(57, 60, 64))
+                    setOnClickListener {
+                        statusView.text = "PREPARADO  •  ${marker.name.uppercase()}"
+                        statusView.setTextColor(lime)
+                        LiveModeBridge.requestedSectionName = marker.name
+                        LiveModeBridge.requestedSectionMs = marker.ms
+                        LiveModeBridge.requestToken++
+                    }
+                }, LinearLayout.LayoutParams(0, dp(56), 1f).apply {
+                    if (index == 0) marginEnd = dp(4) else marginStart = dp(4)
+                    bottomMargin = dp(8)
+                })
+            }
+            if (rowMarkers.size == 1) {
+                row.addView(TextView(this), LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginStart = dp(4) })
+            }
+            markersContainer.addView(row)
+        }
     }
 
     private fun loadMarkers(): List<Marker> {
