@@ -13,6 +13,23 @@ android {
         targetSdk = 35
         versionCode = 18
         versionName = "0.17"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     compileOptions {
@@ -23,8 +40,4 @@ android {
     kotlinOptions {
         jvmTarget = "18"
     }
-}
-
-dependencies {
-    implementation("com.github.neboyang:VoiceChanger:c1caf1224ab8c80d917b934771d16c2ef210bfba")
 }
