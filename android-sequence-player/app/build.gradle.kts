@@ -26,5 +26,5 @@ android {
 }
 
 dependencies {
-    implementation("com.github.neboyang.VoiceChanger:voicechanger:2.1.0")
+    implementation("com.github.neboyang:VoiceChanger:c1caf1224ab8c80d917b934771d16c2ef210bfba")
 }
