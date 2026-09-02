@@ -22,6 +22,9 @@ class MainActivityV20 : MainActivityV19() {
     private var activePitchSongKey = ""
     private var lastPitchTrack: AudioTrack? = null
     private val pitchHandler = Handler(Looper.getMainLooper())
+    private val audioTrackField by lazy {
+        MainActivityV13::class.java.getDeclaredField("audioTrack").apply { isAccessible = true }
+    }
 
     private val pitchWatcher = object : Runnable {
         override fun run() {
@@ -57,7 +60,6 @@ class MainActivityV20 : MainActivityV19() {
         val playerScroll = findVerticalScroll(outer) ?: return
         val scrollContent = playerScroll.getChildAt(0) as? LinearLayout ?: return
 
-        // V16 dejó los marcadores como un panel fijo debajo del reproductor.
         val sectionWrapper = playerScroll.parent as? ViewGroup ?: return
         val sectionPanels = mutableListOf<View>()
         for (i in 0 until sectionWrapper.childCount) {
@@ -65,8 +67,6 @@ class MainActivityV20 : MainActivityV19() {
             if (child !== playerScroll) sectionPanels.add(child)
         }
 
-        // V17/V18/V19 añadieron metrónomo, compás, guía y acciones como
-        // hermanos fijos del reproductor. Los movemos al mismo ScrollView.
         val playerBranch = findDirectBranchContaining(outer, playerScroll) ?: return
         val outerPanels = mutableListOf<View>()
         for (i in 0 until outer.childCount) {
@@ -82,9 +82,7 @@ class MainActivityV20 : MainActivityV19() {
         (playerScroll.parent as? ViewGroup)?.removeView(playerScroll)
         contentRoot.removeView(outer)
 
-        if (header != null) {
-            scrollContent.addView(header, 0)
-        }
+        if (header != null) scrollContent.addView(header, 0)
         sectionPanels.forEach { scrollContent.addView(it) }
         remainingOuterPanels.forEach { scrollContent.addView(it) }
 
@@ -173,10 +171,7 @@ class MainActivityV20 : MainActivityV19() {
 
     private fun updatePitchLabel() {
         if (!::pitchValueView.isInitialized) return
-        pitchValueView.text = when {
-            pitchSemitones > 0 -> "+$pitchSemitones st"
-            else -> "$pitchSemitones st"
-        }
+        pitchValueView.text = if (pitchSemitones > 0) "+$pitchSemitones st" else "$pitchSemitones st"
     }
 
     private fun savePitch(key: String, semitones: Int) {
@@ -217,9 +212,7 @@ class MainActivityV20 : MainActivityV19() {
 
     private fun currentAudioTrack(): AudioTrack? {
         return try {
-            val field = MainActivityV13::class.java.getDeclaredField("audioTrack")
-            field.isAccessible = true
-            field.get(this) as? AudioTrack
+            audioTrackField.get(this) as? AudioTrack
         } catch (_: Exception) {
             null
         }
@@ -275,9 +268,7 @@ class MainActivityV20 : MainActivityV19() {
     }
 
     private fun containsText(root: View, needle: String): Boolean {
-        if (root is TextView && root.text?.toString()?.contains(needle, ignoreCase = true) == true) {
-            return true
-        }
+        if (root is TextView && root.text?.toString()?.contains(needle, ignoreCase = true) == true) return true
         if (root is ViewGroup) {
             for (i in 0 until root.childCount) {
                 if (containsText(root.getChildAt(i), needle)) return true
