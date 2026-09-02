@@ -24,3 +24,7 @@ android {
         jvmTarget = "18"
     }
 }
+
+dependencies {
+    implementation("androidx.media3:media3-common:1.9.4")
+}
