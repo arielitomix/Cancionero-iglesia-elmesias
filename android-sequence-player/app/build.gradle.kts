@@ -26,5 +26,5 @@ android {
 }
 
 dependencies {
-    implementation("androidx.media3:media3-common:1.9.4")
+    implementation("com.github.neboyang:VoiceChanger:2.1.0")
 }
