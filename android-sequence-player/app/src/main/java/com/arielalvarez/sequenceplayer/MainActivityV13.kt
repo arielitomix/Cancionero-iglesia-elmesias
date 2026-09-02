@@ -24,22 +24,16 @@ import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.media3.common.C
-import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.common.audio.SonicAudioProcessor
-import androidx.media3.common.util.UnstableApi
+import io.github.neboyang.voicechanger.SoundTouch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.EOFException
 import java.io.FileInputStream
 import java.io.InputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import kotlin.math.abs
+import kotlin.math.ln
 import kotlin.math.roundToInt
 
-@OptIn(UnstableApi::class)
 open class MainActivityV13 : Activity() {
     companion object {
         private const val PICK_STEM = 3001
@@ -113,19 +107,20 @@ open class MainActivityV13 : Activity() {
     private fun startAudioEngine(){
         val states=currentStems.toList();val infos=states.map{it.info?:return};val localGeneration=++audioGeneration;val minBuffer=AudioTrack.getMinBufferSize(sampleRate,AudioFormat.CHANNEL_OUT_STEREO,AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(8192);val track=AudioTrack.Builder().setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build()).setBufferSizeInBytes(minBuffer*2).setTransferMode(AudioTrack.MODE_STREAM).build();audioTrack=track;track.play()
         Thread{
-            val framesPerBlock=1024;val fadeFrames=((sampleRate.toLong()*JUMP_FADE_MS)/1000L).toInt().coerceAtLeast(1);var readers=infos.map{openReader(it,currentFrame,framesPerBlock)};val out=ShortArray(framesPerBlock*2);val inputBuffer=ByteBuffer.allocateDirect(framesPerBlock*4).order(ByteOrder.nativeOrder());var fadeOutRemaining=0;var fadeInRemaining=0
+            val framesPerBlock=1024;val fadeFrames=((sampleRate.toLong()*JUMP_FADE_MS)/1000L).toInt().coerceAtLeast(1);var readers=infos.map{openReader(it,currentFrame,framesPerBlock)};val out=ShortArray(framesPerBlock*2);val processedOut=ShortArray(framesPerBlock*8);var fadeOutRemaining=0;var fadeInRemaining=0
             val pitchFactor=playbackPitchFactor().coerceIn(0.5f,2f)
-            fun makeSonic():SonicAudioProcessor?{if(abs(pitchFactor-1f)<0.0005f)return null;return SonicAudioProcessor().apply{setSpeed(1f);setPitch(pitchFactor);setOutputSampleRateHz(SonicAudioProcessor.SAMPLE_RATE_NO_CHANGE);configure(AudioProcessor.AudioFormat(sampleRate,2,C.ENCODING_PCM_16BIT));flush(AudioProcessor.StreamMetadata.DEFAULT)}}
-            var sonic=makeSonic()
-            fun drainSonic():Boolean{val processor=sonic?:return true;while(true){val processed=processor.output;if(!processed.hasRemaining())break;while(processed.hasRemaining()){val n=track.write(processed,processed.remaining(),AudioTrack.WRITE_BLOCKING);if(n<0)return false}};return true}
-            fun writeMixed(frames:Int):Boolean{val processor=sonic;if(processor==null)return track.write(out,0,frames*2,AudioTrack.WRITE_BLOCKING)>=0;inputBuffer.clear();inputBuffer.asShortBuffer().put(out,0,frames*2);inputBuffer.limit(frames*4);inputBuffer.position(0);var guard=0;while(inputBuffer.hasRemaining()){val before=inputBuffer.position();processor.queueInput(inputBuffer);if(!drainSonic())return false;if(inputBuffer.position()==before&&++guard>4)return false};return true}
-            fun resetSonic(){sonic?.reset();sonic=makeSonic()}
-            fun finishSonic():Boolean{val processor=sonic?:return true;processor.queueEndOfStream();var guard=0;while(!processor.isEnded&&guard<32){if(!drainSonic())return false;guard++};return drainSonic()}
+            val pitchSemitones=(12.0*ln(pitchFactor.toDouble())/ln(2.0)).toFloat()
+            fun makeSoundTouch():SoundTouch?{if(kotlin.math.abs(pitchSemitones)<0.0005f)return null;return SoundTouch(sampleRate,2).apply{setPitchSemiTones(pitchSemitones)}}
+            var soundTouch=makeSoundTouch()
+            fun drainSoundTouch():Boolean{val processor=soundTouch?:return true;while(true){val frames=processor.receiveSamples(processedOut);if(frames<=0)break;val samples=frames*2;if(track.write(processedOut,0,samples,AudioTrack.WRITE_BLOCKING)<0)return false};return true}
+            fun writeMixed(frames:Int):Boolean{val processor=soundTouch;if(processor==null)return track.write(out,0,frames*2,AudioTrack.WRITE_BLOCKING)>=0;processor.putSamples(out,frames);return drainSoundTouch()}
+            fun resetSoundTouch(){try{soundTouch?.close()}catch(_:Exception){};soundTouch=makeSoundTouch()}
+            fun finishSoundTouch():Boolean{val processor=soundTouch?:return true;processor.flush();return drainSoundTouch()}
             try{while(playing&&localGeneration==audioGeneration){var frame=currentFrame
                 val trigger=gaplessTriggerFrame
                 if(trigger>=0&&fadeOutRemaining==0&&frame<trigger&&trigger-frame<=fadeFrames)fadeOutRemaining=trigger-frame
-                if(trigger>=0&&frame>=trigger){val target=gaplessTargetFrame.coerceIn(0,totalFrames);gaplessTriggerFrame=-1;gaplessTargetFrame=-1;closeReaders(readers);currentFrame=target;frame=target;readers=infos.map{openReader(it,target,framesPerBlock)};resetSonic();fadeOutRemaining=0;fadeInRemaining=fadeFrames;val targetMs=((target.toLong()*1000L)/sampleRate).toInt();handler.post{onGaplessJumpExecuted(targetMs)}}
-                if(frame>=totalFrames){if(loopEnabled){closeReaders(readers);currentFrame=0;frame=0;readers=infos.map{openReader(it,0,framesPerBlock)};resetSonic()}else{finishSonic();playing=false;val shouldContinue=continueEnabled&&songs.size>1&&selectedSongIndex in songs.indices;val nextIndex=if(selectedSongIndex>=songs.lastIndex)0 else selectedSongIndex+1;handler.post{playButton.text="▶ PLAY";if(shouldContinue){autoStartAfterLoad=true;statusView.text="Terminó · cargando siguiente…";loadSong(nextIndex)}else statusView.text="Terminó la canción."};break}}
+                if(trigger>=0&&frame>=trigger){val target=gaplessTargetFrame.coerceIn(0,totalFrames);gaplessTriggerFrame=-1;gaplessTargetFrame=-1;closeReaders(readers);currentFrame=target;frame=target;readers=infos.map{openReader(it,target,framesPerBlock)};resetSoundTouch();fadeOutRemaining=0;fadeInRemaining=fadeFrames;val targetMs=((target.toLong()*1000L)/sampleRate).toInt();handler.post{onGaplessJumpExecuted(targetMs)}}
+                if(frame>=totalFrames){if(loopEnabled){closeReaders(readers);currentFrame=0;frame=0;readers=infos.map{openReader(it,0,framesPerBlock)};resetSoundTouch()}else{finishSoundTouch();playing=false;val shouldContinue=continueEnabled&&songs.size>1&&selectedSongIndex in songs.indices;val nextIndex=if(selectedSongIndex>=songs.lastIndex)0 else selectedSongIndex+1;handler.post{playButton.text="▶ PLAY";if(shouldContinue){autoStartAfterLoad=true;statusView.text="Terminó · cargando siguiente…";loadSong(nextIndex)}else statusView.text="Terminó la canción."};break}}
                 val pendingTrigger=gaplessTriggerFrame;val untilJump=if(pendingTrigger>frame)pendingTrigger-frame else Int.MAX_VALUE;val frames=minOf(framesPerBlock,totalFrames-frame,untilJump);if(frames<=0)continue;val anySolo=states.any{it.solo};var p=0;val bytesRead=IntArray(readers.size);readers.forEachIndexed{i,r->bytesRead[i]=readUpTo(r.input,r.buffer,frames*r.info.bytesPerFrame)}
                 for(i in 0 until frames){var left=0f;var right=0f;states.forEachIndexed{si,state->val r=readers[si];val offset=i*r.info.bytesPerFrame;var sample=0;if(offset+r.info.bytesPerFrame<=bytesRead[si]){var sum=0;var off=offset;repeat(r.info.channels){val lo=r.buffer[off].toInt() and 0xff;val hi=r.buffer[off+1].toInt();sum+=((hi shl 8) or lo).toShort().toInt();off+=2};sample=sum/r.info.channels};val g=gain(state.volume,state.muted,state.solo,anySolo);val v=sample*g;val cue=state.name.contains("click",true)||state.name.contains("guía",true)||state.name.contains("guia",true);if(cue)left+=v else right+=v};left+=extraLeftSample(frame+i,sampleRate)
                     var transitionGain=1f
@@ -133,7 +128,7 @@ open class MainActivityV13 : Activity() {
                     else if(fadeInRemaining>0){transitionGain=1f-(fadeInRemaining.toFloat()/fadeFrames);fadeInRemaining--}
                     out[p++]=(left*transitionGain).roundToInt().coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort();out[p++]=(right*transitionGain).roundToInt().coerceIn(Short.MIN_VALUE.toInt(),Short.MAX_VALUE.toInt()).toShort()}
                 if(!writeMixed(frames))break;currentFrame+=frames
-            }}catch(e:Exception){handler.post{if(localGeneration==audioGeneration){playing=false;autoStartAfterLoad=false;playButton.text="▶ PLAY";statusView.text="Error de streaming: ${e.message?:"audio"}"}}}finally{sonic?.reset();closeReaders(readers);try{track.stop()}catch(_:Exception){};try{track.release()}catch(_:Exception){};if(audioTrack===track)audioTrack=null}}
+            }}catch(e:Exception){handler.post{if(localGeneration==audioGeneration){playing=false;autoStartAfterLoad=false;playButton.text="▶ PLAY";statusView.text="Error de streaming: ${e.message?:"audio"}"}}}finally{try{soundTouch?.close()}catch(_:Exception){};closeReaders(readers);try{track.stop()}catch(_:Exception){};try{track.release()}catch(_:Exception){};if(audioTrack===track)audioTrack=null}}
         .apply{name="SequenceStreaming13";priority=Thread.MAX_PRIORITY;start()}
     }
 
