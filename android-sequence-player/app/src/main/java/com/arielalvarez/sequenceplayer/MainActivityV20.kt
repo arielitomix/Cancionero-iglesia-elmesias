@@ -1,7 +1,11 @@
 package com.arielalvarez.sequenceplayer
 
 import android.graphics.Color
+import android.media.AudioTrack
+import android.media.PlaybackParams
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -9,16 +13,40 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 
 class MainActivityV20 : MainActivityV19() {
 
     private lateinit var pitchValueView: TextView
     private var pitchSemitones = 0
+    private var activePitchSongKey = ""
+    private var lastPitchTrack: AudioTrack? = null
+    private val pitchHandler = Handler(Looper.getMainLooper())
+
+    private val pitchWatcher = object : Runnable {
+        override fun run() {
+            val track = currentAudioTrack()
+            if (track != null && track !== lastPitchTrack) {
+                lastPitchTrack = track
+                applyPitchToTrack(track, showError = false)
+            }
+            if (track == null) lastPitchTrack = null
+            pitchHandler.postDelayed(this, 25)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mergeEditorIntoSingleScroll()
         installPitchPanel()
+        activePitchSongKey = currentSongKey()
+        if (activePitchSongKey.isNotBlank()) loadPitch(activePitchSongKey) else updatePitchLabel()
+        pitchHandler.post(pitchWatcher)
+    }
+
+    override fun onDestroy() {
+        pitchHandler.removeCallbacks(pitchWatcher)
+        super.onDestroy()
     }
 
     private fun mergeEditorIntoSingleScroll() {
@@ -49,15 +77,11 @@ class MainActivityV20 : MainActivityV19() {
         val header = outerPanels.firstOrNull { containsText(it, "SecuenLive") }
         val remainingOuterPanels = outerPanels.filter { it !== header }
 
-        // Desconectar vistas de sus padres antes de reubicarlas.
         sectionPanels.forEach { (it.parent as? ViewGroup)?.removeView(it) }
         outerPanels.forEach { (it.parent as? ViewGroup)?.removeView(it) }
         (playerScroll.parent as? ViewGroup)?.removeView(playerScroll)
         contentRoot.removeView(outer)
 
-        // El encabezado queda arriba y todo lo demás continúa debajo del
-        // reproductor: stems, transporte, marcadores, metrónomo, compás,
-        // guía y modo en vivo. Ahora TODO se desplaza junto.
         if (header != null) {
             scrollContent.addView(header, 0)
         }
@@ -124,21 +148,99 @@ class MainActivityV20 : MainActivityV19() {
 
         val index = if (scrollContent.childCount > 0) 1.coerceAtMost(scrollContent.childCount) else 0
         scrollContent.addView(panel, index)
+        updatePitchLabel()
     }
 
     private fun changePitch(delta: Int) {
-        setPitch((pitchSemitones + delta).coerceIn(-6, 6))
+        setPitch(pitchSemitones + delta)
     }
 
     private fun setPitch(value: Int) {
         pitchSemitones = value.coerceIn(-6, 6)
-        if (::pitchValueView.isInitialized) {
-            pitchValueView.text = when {
-                pitchSemitones > 0 -> "+$pitchSemitones st"
-                else -> "$pitchSemitones st"
-            }
+        updatePitchLabel()
+
+        val key = currentSongKey()
+        if (key.isNotBlank()) {
+            activePitchSongKey = key
+            savePitch(key, pitchSemitones)
         }
-        setPlaybackPitchSemitones(pitchSemitones)
+
+        currentAudioTrack()?.let { track ->
+            lastPitchTrack = track
+            applyPitchToTrack(track, showError = true)
+        }
+    }
+
+    private fun updatePitchLabel() {
+        if (!::pitchValueView.isInitialized) return
+        pitchValueView.text = when {
+            pitchSemitones > 0 -> "+$pitchSemitones st"
+            else -> "$pitchSemitones st"
+        }
+    }
+
+    private fun savePitch(key: String, semitones: Int) {
+        getSharedPreferences("secuenlive_pitch_v20", MODE_PRIVATE)
+            .edit()
+            .putInt("pitch_$key", semitones.coerceIn(-6, 6))
+            .apply()
+    }
+
+    private fun loadPitch(key: String) {
+        pitchSemitones = getSharedPreferences("secuenlive_pitch_v20", MODE_PRIVATE)
+            .getInt("pitch_$key", 0)
+            .coerceIn(-6, 6)
+        updatePitchLabel()
+        currentAudioTrack()?.let { track ->
+            lastPitchTrack = track
+            applyPitchToTrack(track, showError = false)
+        }
+    }
+
+    override fun onSongKeyChanged(key: String) {
+        super.onSongKeyChanged(key)
+        if (key.isBlank() || key == activePitchSongKey) return
+        activePitchSongKey = key
+        loadPitch(key)
+    }
+
+    override fun onNewSongCreated() {
+        super.onNewSongCreated()
+        activePitchSongKey = ""
+        pitchSemitones = 0
+        updatePitchLabel()
+        currentAudioTrack()?.let { track ->
+            lastPitchTrack = track
+            applyPitchToTrack(track, showError = false)
+        }
+    }
+
+    private fun currentAudioTrack(): AudioTrack? {
+        return try {
+            val field = MainActivityV13::class.java.getDeclaredField("audioTrack")
+            field.isAccessible = true
+            field.get(this) as? AudioTrack
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun applyPitchToTrack(track: AudioTrack, showError: Boolean): Boolean {
+        return try {
+            val factor = Math.pow(2.0, pitchSemitones.toDouble() / 12.0).toFloat()
+            track.setPlaybackParams(
+                PlaybackParams()
+                    .setSpeed(1.0f)
+                    .setPitch(factor)
+                    .setAudioFallbackMode(PlaybackParams.AUDIO_FALLBACK_MODE_DEFAULT)
+            )
+            true
+        } catch (_: Exception) {
+            if (showError) {
+                Toast.makeText(this, "Este dispositivo no pudo aplicar el cambio de tono.", Toast.LENGTH_SHORT).show()
+            }
+            false
+        }
     }
 
     private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
