@@ -2,17 +2,23 @@ package com.arielalvarez.sequenceplayer
 
 import android.graphics.Color
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
 class MainActivityV20 : MainActivityV19() {
 
+    private lateinit var pitchValueView: TextView
+    private var pitchSemitones = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mergeEditorIntoSingleScroll()
+        installPitchPanel()
     }
 
     private fun mergeEditorIntoSingleScroll() {
@@ -70,6 +76,72 @@ class MainActivityV20 : MainActivityV19() {
             )
         )
     }
+
+    private fun installPitchPanel() {
+        val contentRoot = findViewById<ViewGroup>(android.R.id.content)
+        val playerScroll = findVerticalScroll(contentRoot) ?: return
+        val scrollContent = playerScroll.getChildAt(0) as? LinearLayout ?: return
+
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(0), dp(10), dp(0), dp(10))
+        }
+
+        panel.addView(TextView(this).apply {
+            text = "TONO"
+            setTextColor(Color.WHITE)
+            textSize = 17f
+        })
+
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        controls.addView(Button(this).apply {
+            text = "−1"
+            setOnClickListener { changePitch(-1) }
+        }, LinearLayout.LayoutParams(0, dp(46), 1f))
+
+        pitchValueView = TextView(this).apply {
+            text = "0 st"
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            textSize = 18f
+        }
+        controls.addView(pitchValueView, LinearLayout.LayoutParams(0, dp(46), 1f))
+
+        controls.addView(Button(this).apply {
+            text = "+1"
+            setOnClickListener { changePitch(1) }
+        }, LinearLayout.LayoutParams(0, dp(46), 1f))
+
+        panel.addView(controls)
+        panel.addView(Button(this).apply {
+            text = "VOLVER A TONO ORIGINAL"
+            setOnClickListener { setPitch(0) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+
+        val index = if (scrollContent.childCount > 0) 1.coerceAtMost(scrollContent.childCount) else 0
+        scrollContent.addView(panel, index)
+    }
+
+    private fun changePitch(delta: Int) {
+        setPitch((pitchSemitones + delta).coerceIn(-6, 6))
+    }
+
+    private fun setPitch(value: Int) {
+        pitchSemitones = value.coerceIn(-6, 6)
+        if (::pitchValueView.isInitialized) {
+            pitchValueView.text = when {
+                pitchSemitones > 0 -> "+$pitchSemitones st"
+                else -> "$pitchSemitones st"
+            }
+        }
+        setPlaybackPitchSemitones(pitchSemitones)
+    }
+
+    private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
 
     private fun findVerticalScroll(view: View): ScrollView? {
         if (view is ScrollView) return view
