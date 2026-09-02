@@ -22,9 +22,7 @@ class MainActivityV20 : MainActivityV19() {
     private var activePitchSongKey = ""
     private var lastPitchTrack: AudioTrack? = null
     private val pitchHandler = Handler(Looper.getMainLooper())
-    private val audioTrackField by lazy {
-        MainActivityV13::class.java.getDeclaredField("audioTrack").apply { isAccessible = true }
-    }
+    private val audioTrackField by lazy { MainActivityV13::class.java.getDeclaredField("audioTrack").apply { isAccessible = true } }
 
     private val pitchWatcher = object : Runnable {
         override fun run() {
